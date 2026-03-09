@@ -310,15 +310,7 @@ public partial class InitialCreate : Migration
         migrationBuilder.CreateIndex(name: "IX_UserApiKeys_UserId", table: "UserApiKeys", column: "UserId");
         migrationBuilder.CreateIndex(name: "IX_Users_Email", table: "Users", column: "Email", unique: true);
 
-        migrationBuilder.Sql(@"
-CREATE VIRTUAL TABLE search_index USING fts5(
-    entity_type,
-    entity_id,
-    title,
-    content,
-    tags,
-    summary
-);");
+        migrationBuilder.Sql(@"CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(entity_type, entity_id, title, tags, summary, content, tokenize='porter ascii');");
     }
 
     protected override void Down(MigrationBuilder migrationBuilder)
