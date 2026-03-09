@@ -1,0 +1,17 @@
+services:
+  caselog:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: caselog
+    restart: unless-stopped
+    environment:
+      CASELOG_PORT: ${CASELOG_PORT:-5000}
+      CASELOG_DATA_PATH: /data/caselog.db
+    ports:
+      - "${CASELOG_PORT:-5000}:${CASELOG_PORT:-5000}"
+    volumes:
+      - caselog-data:/data
+
+volumes:
+  caselog-data:
