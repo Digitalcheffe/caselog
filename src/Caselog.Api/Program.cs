@@ -18,7 +18,9 @@ if (!string.IsNullOrWhiteSpace(dataDirectory))
 }
 
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
-builder.Services.AddDbContext<CaselogDbContext>(options => options.UseSqlite($"Data Source={dataPath}"));
+builder.Services.AddDbContext<CaselogDbContext>(options =>
+    options.UseSqlite($"Data Source={dataPath}",
+        b => b.MigrationsAssembly("Caselog.Api")));
 
 builder.Services
     .AddAuthentication(ApiKeyAuthenticationDefaults.Scheme)
