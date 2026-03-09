@@ -21,6 +21,5 @@ ENV CASELOG_PORT=5000
 ENV CASELOG_DB_PATH=/data/caselog.db
 EXPOSE 5000
 RUN mkdir -p /data
-VOLUME ["/data"]
 COPY --from=api-build /app/publish ./
 ENTRYPOINT ["dotnet", "Caselog.Api.dll"]
