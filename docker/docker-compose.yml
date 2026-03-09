@@ -11,7 +11,7 @@ services:
     ports:
       - "${CASELOG_PORT:-5000}:${CASELOG_PORT:-5000}"
     volumes:
-      - caselog-data:/data
+      - ${HOST_PATH}:/data
 
 volumes:
   caselog-data:
