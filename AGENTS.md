@@ -274,6 +274,195 @@ type:list tag:purchases
 
 ---
 
+## Design System
+
+Caselog's visual identity is derived from the **Painfully Useful** Ghost theme. The design should feel like a premium editorial tool — not a generic SaaS dashboard. Both modes are first-class. Neither is an afterthought.
+
+### Color Tokens
+
+Define these as Tailwind CSS custom properties in `tailwind.config.ts` and as CSS variables in `globals.css`. Use semantic token names — never hardcode hex values in components.
+
+```css
+/* Dark mode (default) */
+--color-bg-base:        #111111;   /* page background */
+--color-bg-surface:     #1e1e1e;   /* cards, panels, sidebar */
+--color-bg-elevated:    #242424;   /* modals, dropdowns, hover states */
+--color-border:         #2e2e2e;   /* card borders, dividers */
+--color-text-primary:   #f5f5f5;   /* headings, primary content */
+--color-text-secondary: #a0a0a0;   /* metadata, labels, placeholders */
+--color-text-muted:     #606060;   /* disabled, tertiary text */
+--color-accent:         #f97316;   /* orange — CTAs, links, dates, tags, active states */
+--color-accent-hover:   #ea6c0a;   /* orange darkened for hover */
+--color-accent-subtle:  #f9731620; /* orange at low opacity for backgrounds */
+--color-success:        #22c55e;
+--color-warning:        #eab308;
+--color-danger:         #ef4444;
+
+/* Light mode */
+--color-bg-base:        #f5f5f5;
+--color-bg-surface:     #ffffff;
+--color-bg-elevated:    #f0f0f0;
+--color-border:         #e0e0e0;
+--color-text-primary:   #111111;
+--color-text-secondary: #555555;
+--color-text-muted:     #999999;
+--color-accent:         #f97316;   /* same orange — it works in both modes */
+--color-accent-hover:   #ea6c0a;
+--color-accent-subtle:  #f9731615;
+```
+
+### Typography
+
+```css
+/* Font stack */
+--font-sans: 'Inter', system-ui, sans-serif;       /* body, UI */
+--font-mono: 'JetBrains Mono', 'Fira Code', monospace; /* code blocks */
+
+/* Scale */
+--text-xs:   0.75rem;   /* metadata, badges */
+--text-sm:   0.875rem;  /* labels, secondary text */
+--text-base: 1rem;      /* body */
+--text-lg:   1.125rem;  /* card titles */
+--text-xl:   1.25rem;   /* section headers */
+--text-2xl:  1.5rem;    /* page titles */
+--text-3xl:  1.875rem;  /* hero headings */
+
+/* Heading style: bold weight, tight tracking */
+/* Metadata style: uppercase, letter-spacing: 0.08em, text-secondary */
+/* Tag style: uppercase, text-xs, accent color, no background */
+```
+
+### Component Patterns
+
+**Cards**
+- Background: `bg-surface`
+- Border: `1px solid border`
+- Border radius: `8px`
+- Padding: `16px`
+- Image thumbnails: full-width, `aspect-ratio: 16/9`, `border-radius: 6px`, `object-fit: cover`
+- Title: bold, `text-lg`, `text-primary`
+- Metadata line: `text-xs uppercase tracking-wide text-secondary` — date • read time or entity type
+- Accent elements (tags, dates, type labels): `color: accent`
+- Hover: slight `bg-elevated` lift, no heavy shadow
+
+**Navigation**
+- Top bar: `bg-base` (not surface), full-width, `border-bottom: 1px solid border`
+- Logo left, nav links center-left, search + theme toggle + user avatar right
+- Active nav link: `accent` color underline
+- Theme toggle: sun/moon icon button, `bg-elevated` pill
+
+**Buttons**
+- Primary: `bg-accent text-white font-semibold rounded-md px-4 py-2` — matches the orange "My Account" / "Join free" buttons on PU
+- Secondary: `border border-border text-primary bg-transparent rounded-md px-4 py-2`
+- Danger: `bg-danger text-white`
+- Ghost: `text-accent` no background, hover underline
+
+**Tags / Badges**
+- Inline tags: `text-xs uppercase tracking-wide color-accent` — no pill background, just colored text
+- Category pills (sidebar): `border border-border rounded-full px-3 py-1 text-sm text-primary`
+
+**Sidebar (article/page layout)**
+- Right sidebar: `bg-surface border border-border rounded-lg p-4`
+- Section headers: `text-sm font-semibold text-primary uppercase tracking-wide mb-3`
+
+**Forms / Inputs**
+- Background: `bg-elevated`
+- Border: `1px solid border`
+- Focus ring: `2px solid accent`
+- Border radius: `6px`
+- Label: `text-sm text-secondary uppercase tracking-wide`
+
+**Dividers**
+- `1px solid border` — subtle, never heavy
+
+### Theme Switching
+
+- Default: respect `prefers-color-scheme` system setting
+- User override: toggle stored in `localStorage` as `caselog-theme: 'dark' | 'light'`
+- Toggle button in top nav — sun icon in dark mode, moon icon in light mode
+- Apply theme class (`dark` / `light`) on `<html>` element
+- All color tokens switch via CSS custom properties — no JS class toggling on individual components
+- Transitions: `transition: background-color 0.2s ease, color 0.2s ease` on `body` only — not on every element (causes jank)
+
+### Layout Grid
+
+- Max content width: `1200px` centered
+- Standard page: full-width sidebar nav (left, `240px`) + main content area
+- Article/page view: main content (`65%`) + right sidebar (`320px`) with gap
+- Mobile: sidebar collapses to hamburger menu, single column layout
+- Spacing scale: `4px` base unit — use multiples (`8`, `12`, `16`, `24`, `32`, `48`)
+
+### Do Not
+
+- Do not use generic component libraries (shadcn, MUI, Ant Design) — build components from Tailwind primitives
+- Do not use heavy drop shadows — the dark theme uses border + elevation, not shadows
+- Do not use blue as a primary accent — orange is the brand color, use it consistently
+- Do not use rounded-full on rectangular elements — `rounded-md` (6-8px) is the standard
+- Do not animate everything — motion should be purposeful (hover states, theme transition, modal open/close only)
+
+---
+
+## User Management
+
+Caselog supports multiple users with role-based access. The admin user manages all other users through a dedicated UI.
+
+### Roles
+
+| Role | Capabilities |
+|---|---|
+| Admin | Full access to all content, user management, instance settings |
+| Member | Own content + read internal-visibility content from other users |
+
+### User Management Pages
+
+```
+/admin/users              List all users — name, email, role, last login, status
+/admin/users/new          Create new user form
+/admin/users/{id}         Edit user — name, email, role, enable/disable account
+```
+
+Admin-only. Non-admin access redirects to dashboard with 403 toast.
+
+### User Management Features
+
+- **List users** — table view: avatar initial, name, email, role badge, last login date, active/disabled status badge
+- **Create user** — form: email, display name, role (admin/member), temporary password (auto-generated, shown once, user prompted to change on first login)
+- **Edit user** — change display name, email, role. Cannot demote the last admin.
+- **Disable user** — toggle — disables login without deleting data. Disabled badge shown in user list.
+- **Delete user** — admin only, requires confirmation dialog — hard delete of user record. Content they created is reassigned to admin or orphaned (admin chooses).
+- **Force password reset** — sends reset email if SMTP configured, otherwise shows a one-time reset link to copy
+- **Impersonate user** — admin can view the app as a specific user (read-only impersonation for support purposes). Banner shown at top when impersonating. Exit impersonation button always visible.
+
+### User Profile (self-service, all users)
+
+Available at `/settings/profile`:
+- Change display name
+- Change email (requires current password confirmation)
+- Change password (requires current password)
+- Upload avatar (stored as base64 or small file, shown as initials fallback if none)
+- Enroll / disable 2FA
+- View and manage own API keys
+
+### API Endpoints
+
+```
+GET    /api/admin/users              # admin only — list all users
+POST   /api/admin/users              # admin only — create user
+GET    /api/admin/users/{id}         # admin only — get user detail
+PUT    /api/admin/users/{id}         # admin only — update user
+DELETE /api/admin/users/{id}         # admin only — delete user
+POST   /api/admin/users/{id}/disable # admin only — disable account
+POST   /api/admin/users/{id}/enable  # admin only — enable account
+POST   /api/admin/users/{id}/impersonate # admin only — get impersonation token
+POST   /api/admin/users/{id}/reset-password # admin only — trigger reset
+
+GET    /api/profile                  # own profile
+PUT    /api/profile                  # update own profile
+POST   /api/profile/avatar           # upload avatar
+```
+
+---
+
 ## Frontend Pages
 
 ```
@@ -292,6 +481,10 @@ type:list tag:purchases
 /followups           Open follow-ups list
 /unorganized         Items with no parent (shelf/notebook/page)
 /settings            API keys, user profile, 2FA, SMTP config
+/settings/profile    Own profile — name, email, password, avatar, 2FA, API keys
+/admin/users         User list (admin only)
+/admin/users/new     Create user (admin only)
+/admin/users/{id}    Edit user (admin only)
 /public/{slug}       Public read-only view (unauthenticated)
 ```
 
