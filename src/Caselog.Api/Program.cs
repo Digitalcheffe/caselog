@@ -9,8 +9,7 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 var port = Environment.GetEnvironmentVariable("CASELOG_PORT") ?? "5000";
-var dataPath = Environment.GetEnvironmentVariable("CASELOG_DATA_PATH")
-    ?? Path.Combine(builder.Environment.ContentRootPath, "data", "caselog.db");
+var dataPath = Environment.GetEnvironmentVariable("CASELOG_DB_PATH") ?? "/data/caselog.db";
 
 var dataDirectory = Path.GetDirectoryName(dataPath);
 if (!string.IsNullOrWhiteSpace(dataDirectory))
@@ -37,39 +36,46 @@ await using (var scope = app.Services.CreateAsyncScope())
     await dbContext.Database.MigrateAsync();
     await dbContext.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
 
-    if (!await dbContext.Users.AnyAsync())
+    try
     {
-        var createdAt = DateTime.UtcNow;
-        var defaultApiKey = ApiKeyHasher.GenerateApiKey();
-
-        var adminUser = new User
+        if (!await dbContext.Users.AnyAsync())
         {
-            Id = Guid.NewGuid(),
-            Email = "admin@caselog.local",
-            PasswordHash = string.Empty,
-            Role = UserRole.Admin,
-            CreatedAt = createdAt
-        };
+            var createdAt = DateTime.UtcNow;
+            var defaultApiKey = ApiKeyHasher.GenerateApiKey();
 
-        var adminApiKey = new UserApiKey
-        {
-            Id = Guid.NewGuid(),
-            UserId = adminUser.Id,
-            KeyHash = ApiKeyHasher.Hash(defaultApiKey),
-            Label = "Initial bootstrap key",
-            CreatedAt = createdAt
-        };
+            var adminUser = new User
+            {
+                Id = Guid.NewGuid(),
+                Email = "admin@caselog.local",
+                PasswordHash = string.Empty,
+                Role = UserRole.Admin,
+                CreatedAt = createdAt
+            };
 
-        dbContext.Users.Add(adminUser);
-        dbContext.UserApiKeys.Add(adminApiKey);
-        await dbContext.SaveChangesAsync();
+            var adminApiKey = new UserApiKey
+            {
+                Id = Guid.NewGuid(),
+                UserId = adminUser.Id,
+                KeyHash = ApiKeyHasher.Hash(defaultApiKey),
+                Label = "Initial bootstrap key",
+                CreatedAt = createdAt
+            };
 
-        logger.LogWarning("========================================================");
-        logger.LogWarning("Caselog default admin account created.");
-        logger.LogWarning("Email: {Email}", adminUser.Email);
-        logger.LogWarning("API Key (shown once): {ApiKey}", defaultApiKey);
-        logger.LogWarning("Store this key securely. It will not be shown again.");
-        logger.LogWarning("========================================================");
+            dbContext.Users.Add(adminUser);
+            dbContext.UserApiKeys.Add(adminApiKey);
+            await dbContext.SaveChangesAsync();
+
+            logger.LogWarning("========================================================");
+            logger.LogWarning("Caselog default admin account created.");
+            logger.LogWarning("Email: {Email}", adminUser.Email);
+            logger.LogWarning("API Key (shown once): {ApiKey}", defaultApiKey);
+            logger.LogWarning("Store this key securely. It will not be shown again.");
+            logger.LogWarning("========================================================");
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed while seeding default admin user and API key.");
     }
 }
 

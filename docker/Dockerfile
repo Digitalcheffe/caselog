@@ -18,7 +18,7 @@ RUN dotnet publish ./Caselog.Api/Caselog.Api.csproj -c Release -o /app/publish /
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine AS final
 WORKDIR /app
 ENV CASELOG_PORT=5000
-ENV CASELOG_DATA_PATH=/data/caselog.db
+ENV CASELOG_DB_PATH=/data/caselog.db
 EXPOSE 5000
 RUN mkdir -p /data
 VOLUME ["/data"]
