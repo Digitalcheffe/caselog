@@ -1,9 +1,7 @@
 # syntax=docker/dockerfile:1
-
 FROM node:20-alpine AS ui-build
 WORKDIR /src/ui
-COPY src/caselog-ui/package.json ./
-COPY src/caselog-ui/package-lock.json ./
+COPY src/caselog-ui/package*.json ./
 RUN npm ci
 COPY src/caselog-ui/ ./
 RUN npm run build
