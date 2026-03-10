@@ -15,7 +15,7 @@ public abstract class BaseApiController : ControllerBase
             : throw new InvalidOperationException("Authenticated user id claim is missing.");
     }
 
-    protected ActionResult<ApiEnvelope<object>> NotFoundProblem(string detail)
+    protected ActionResult NotFoundProblem(string detail)
     {
         var problem = new ProblemDetails
         {
