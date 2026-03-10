@@ -216,6 +216,7 @@ public class PageMindMapAttachment
     public Guid Id { get; set; }
     public Guid PageId { get; set; }
     public Guid MindMapId { get; set; }
+    public int SortOrder { get; set; }
 
     public Page Page { get; set; } = null!;
     public MindMap MindMap { get; set; } = null!;
