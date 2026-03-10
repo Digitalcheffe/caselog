@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 
 #nullable disable
 
-namespace Caselog.Api.Data.Migrations;
+namespace Caselog.Api.Migrations;
 
 [DbContext(typeof(CaselogDbContext))]
 partial class CaselogDbContextModelSnapshot : ModelSnapshot

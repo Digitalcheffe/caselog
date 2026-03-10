@@ -1,7 +1,7 @@
 services:
   caselog:
     build:
-      context: ..
+      context: ${CASELOG_BUILD_CONTEXT:-..}
       dockerfile: docker/Dockerfile
     container_name: caselog
     restart: unless-stopped
