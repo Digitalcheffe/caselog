@@ -371,87 +371,100 @@ export const attachListToPage = async (listId: string, pageId: string): Promise<
   });
 };
 
-export type MindMapNode = {
-  id: string;
-  mindMapId: string;
-  parentNodeId: string | null;
-  label: string;
-  notes: string | null;
-  sortOrder: number;
-  children: MindMapNode[];
+export type ProfileResponse = {
+  name: string;
+  email: string;
+  avatarUrl?: string | null;
+  twoFactorEnabled?: boolean;
 };
 
-export type MindMap = {
+export type TwoFactorSetupResponse = {
+  qrCodeImageUrl: string;
+  manualKey: string;
+};
+
+export type AuthSession = {
   id: string;
-  title: string;
-  visibility: "private" | "internal" | "public";
-  publicSlug?: string | null;
+  device: string;
+  browser: string;
+  lastSeenAt: string;
+  isCurrent: boolean;
+};
+
+export type ApiKeyRecord = {
+  id: string;
+  name: string;
   createdAt: string;
-  updatedAt: string;
+  lastUsedAt?: string | null;
 };
 
-export type MindMapDetail = MindMap & {
-  rootNode: MindMapNode;
+export type CreatedApiKey = {
+  id: string;
+  name: string;
+  key: string;
+  createdAt: string;
 };
 
-export const getMindMaps = async (): Promise<MindMap[]> => {
-  const response = await apiRequest<PagedResult<MindMap>>("/api/mindmaps?page=1&pageSize=200");
-  return response.items;
-};
+export const getProfile = async (): Promise<ProfileResponse> => apiRequest<ProfileResponse>("/api/auth/profile");
 
-export const getMindMap = async (id: string): Promise<MindMapDetail> =>
-  apiRequest<MindMapDetail>(`/api/mindmaps/${id}`);
-
-export const createMindMap = async (title: string): Promise<MindMapDetail> =>
-  apiRequest<MindMapDetail>("/api/mindmaps", {
-    method: "POST",
-    body: JSON.stringify({ title, visibility: "private", publicSlug: null }),
+export const updateProfileName = async (name: string): Promise<ProfileResponse> =>
+  apiRequest<ProfileResponse>("/api/auth/profile", {
+    method: "PUT",
+    body: JSON.stringify({ name }),
   });
 
-export const createMindMapNode = async (
-  id: string,
-  body: { parentId: string | null; label: string },
-): Promise<MindMapNode> =>
-  apiRequest<MindMapNode>(`/api/mindmaps/${id}/nodes`, {
-    method: "POST",
-    body: JSON.stringify({
-      parentNodeId: body.parentId,
-      label: body.label,
-      notes: null,
-      sortOrder: 0,
-    }),
+export const updateProfileEmail = async (email: string, currentPassword: string): Promise<void> => {
+  await apiRequest<{ updated: boolean }>("/api/auth/email", {
+    method: "PUT",
+    body: JSON.stringify({ email, currentPassword }),
   });
-
-export const deleteMindMapNode = async (id: string, nodeId: string): Promise<void> => {
-  await apiRequest(`/api/mindmaps/${id}/nodes/${nodeId}`, { method: "DELETE" });
 };
 
-export const updateMindMapNode = async (
-  id: string,
-  nodeId: string,
-  body: { parentNodeId: string | null; label: string; notes: string | null; sortOrder: number },
+export const updateProfilePassword = async (
+  currentPassword: string,
+  newPassword: string,
 ): Promise<void> => {
-  await apiRequest(`/api/mindmaps/${id}/nodes/${nodeId}`, {
+  await apiRequest<{ updated: boolean }>("/api/auth/password", {
     method: "PUT",
-    body: JSON.stringify(body),
+    body: JSON.stringify({ currentPassword, newPassword }),
   });
 };
 
-export const updateMindMap = async (id: string, body: { title: string }): Promise<void> => {
-  await apiRequest(`/api/mindmaps/${id}`, {
-    method: "PUT",
-    body: JSON.stringify({ title: body.title, visibility: "private", publicSlug: null }),
-  });
-};
+export const getTwoFactorSetup = async (): Promise<TwoFactorSetupResponse> =>
+  apiRequest<TwoFactorSetupResponse>("/api/auth/2fa/setup");
 
-export const getPages = async (): Promise<Page[]> => {
-  const response = await apiRequest<PagedResult<ApiPage>>("/api/pages?page=1&pageSize=200");
-  return response.items.map(toPage);
-};
-
-export const attachMindMapToPage = async (mindMapId: string, pageId: string): Promise<void> => {
-  await apiRequest(`/api/pages/${pageId}/mindmaps`, {
+export const enableTwoFactor = async (token: string): Promise<void> => {
+  await apiRequest<{ enabled: boolean }>("/api/auth/2fa/enable", {
     method: "POST",
-    body: JSON.stringify({ mindMapId, sortOrder: null }),
+    body: JSON.stringify({ token }),
+  });
+};
+
+export const disableTwoFactor = async (): Promise<void> => {
+  await apiRequest<{ disabled: boolean }>("/api/auth/2fa/disable", {
+    method: "POST",
+  });
+};
+
+export const getAuthSessions = async (): Promise<AuthSession[]> =>
+  apiRequest<AuthSession[]>("/api/auth/sessions");
+
+export const revokeAuthSession = async (sessionId: string): Promise<void> => {
+  await apiRequest<{ revoked: boolean }>(`/api/auth/sessions/${sessionId}`, {
+    method: "DELETE",
+  });
+};
+
+export const getApiKeys = async (): Promise<ApiKeyRecord[]> => apiRequest<ApiKeyRecord[]>("/api/apikeys");
+
+export const createApiKey = async (name: string): Promise<CreatedApiKey> =>
+  apiRequest<CreatedApiKey>("/api/apikeys", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+
+export const revokeApiKey = async (keyId: string): Promise<void> => {
+  await apiRequest<{ revoked: boolean }>(`/api/apikeys/${keyId}`, {
+    method: "DELETE",
   });
 };

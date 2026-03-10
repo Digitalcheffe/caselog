@@ -572,67 +572,93 @@ button {
   overflow: auto;
 }
 
-.mindmap-editor-page {
-  height: calc(100vh - var(--top-nav-height) - (var(--content-padding) * 2));
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 12px;
+.settings-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 16px;
 }
-
-.mindmap-toolbar {
+.settings-tab {
+  background: transparent;
+  border: 0;
+  color: var(--color-text-secondary);
+  padding: 10px 12px;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-weight: 600;
+}
+.settings-tab.active {
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+}
+.settings-profile-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 16px;
+  margin-bottom: 16px;
 }
-
-.mindmap-canvas {
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-bg-surface);
-  min-height: 0;
+.profile-avatar-initials,
+.profile-avatar-image {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
 }
-
-.mindmap-context {
-  position: fixed;
-  z-index: 120;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-bg-elevated);
+.profile-avatar-initials {
   display: grid;
-  min-width: 180px;
+  place-items: center;
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 700;
 }
-
-.mindmap-context button {
-  border: 0;
-  border-bottom: 1px solid var(--color-border);
-  background: transparent;
-  color: var(--color-text-primary);
-  text-align: left;
-  padding: 10px;
-  cursor: pointer;
+.settings-form-grid {
+  display: grid;
+  gap: 12px;
+  max-width: 580px;
 }
-
-.mindmap-context button:last-child {
-  border-bottom: 0;
+.settings-actions {
+  justify-content: flex-start;
 }
-
-.mindmap-modal {
-  width: min(520px, calc(100vw - 24px));
+.field-error {
+  margin: 6px 0 0;
+  color: var(--color-danger);
+  font-size: 0.875rem;
 }
-
-.mindmap-attach-list {
+.settings-list-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  border-top: 1px solid var(--color-border);
+  padding: 12px 0;
+}
+.twofa-setup {
   margin-top: 12px;
-  max-height: 280px;
-  overflow: auto;
   display: grid;
-  gap: 6px;
+  gap: 10px;
+  max-width: 320px;
 }
-
-.mindmap-attach-list button {
+.twofa-qr {
+  width: 180px;
+  height: 180px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background: white;
+}
+.settings-modal {
+  width: min(520px, calc(100vw - 32px));
+}
+.key-preview {
+  background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  padding: 8px;
-  text-align: left;
-  background: var(--color-bg-elevated);
-  color: var(--color-text-primary);
+  padding: 10px;
+  overflow-wrap: anywhere;
+}
+.settings-keys-header {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.settings-error {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
 }

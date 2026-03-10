@@ -8,12 +8,21 @@ import {
 } from "react";
 import {
   attachListToPage,
+  createApiKey,
   createList,
   createListEntry,
   createListField,
   createNotebookPage,
   createShelf,
   createShelfNotebook,
+  disableTwoFactor,
+  enableTwoFactor,
+  getApiKeys,
+  getAuthSessions,
+  getProfile,
+  getTwoFactorSetup,
+  revokeApiKey,
+  revokeAuthSession,
   db,
   deleteEntry,
   deleteListField,
@@ -31,10 +40,14 @@ import {
   type ListTypeField,
   type Notebook,
   type Page,
+  type ProfileResponse,
   type Shelf,
   updateEntry,
   updateList,
   updatePage,
+  updateProfileEmail,
+  updateProfileName,
+  updateProfilePassword,
   uploadPageAttachment,
 } from "./api";
 import { AppShell } from "./components/layout";
@@ -1630,24 +1643,473 @@ const PageEditor = ({
   );
 };
 
-const SettingsPage = () => (
-  <div>
-    <PageHeader title="Settings" />
-    <Card>
-      <h3>API keys</h3>
-      <Button>Generate</Button>
-    </Card>
-    <Card>
-      <h3>Profile</h3>
-      <Input placeholder="Email" />
-      <Input placeholder="Current password" type="password" />
-    </Card>
-    <Card>
-      <h3>2FA</h3>
-      <p>Enroll via QR code flow placeholder.</p>
-    </Card>
-  </div>
-);
+const SettingsPage = () => {
+  const [activeTab, setActiveTab] = useState<"profile" | "security" | "apikeys">("profile");
+  const [profile, setProfile] = useState<ProfileResponse | null>(null);
+  const [profileName, setProfileName] = useState("");
+  const [emailDraft, setEmailDraft] = useState("");
+  const [isEmailEditing, setIsEmailEditing] = useState(false);
+  const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
+  const [emailPassword, setEmailPassword] = useState("");
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [passwordErrors, setPasswordErrors] = useState<Record<string, string>>({});
+  const [twoFactorSetup, setTwoFactorSetup] = useState<{ qrCodeImageUrl: string; manualKey: string } | null>(null);
+  const [twoFactorToken, setTwoFactorToken] = useState("");
+  const [sessions, setSessions] = useState<
+    Array<{ id: string; device: string; browser: string; lastSeenAt: string; isCurrent: boolean }>
+  >([]);
+  const [sessionToRevoke, setSessionToRevoke] = useState<string | null>(null);
+  const [apiKeys, setApiKeys] = useState<Array<{ id: string; name: string; createdAt: string; lastUsedAt?: string | null }>>([]);
+  const [apiKeyToRevoke, setApiKeyToRevoke] = useState<string | null>(null);
+  const [isCreateKeyModalOpen, setIsCreateKeyModalOpen] = useState(false);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [createdKey, setCreatedKey] = useState<{ id: string; name: string; key: string; createdAt: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const initials = (profile?.name ?? "")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("") || "U";
+
+  const formatDate = (value?: string | null) => {
+    if (!value) return "Never";
+    return new Date(value).toLocaleString();
+  };
+
+  const setTabFromPath = () => {
+    const path = window.location.pathname;
+    if (path.startsWith("/settings/security")) {
+      setActiveTab("security");
+      return;
+    }
+    if (path.startsWith("/settings/apikeys")) {
+      setActiveTab("apikeys");
+      return;
+    }
+    setActiveTab("profile");
+  };
+
+  useEffect(() => {
+    setTabFromPath();
+
+    const load = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const [profileResponse, sessionResponse, keyResponse] = await Promise.all([
+          getProfile(),
+          getAuthSessions(),
+          getApiKeys(),
+        ]);
+        setProfile(profileResponse);
+        setProfileName(profileResponse.name ?? "");
+        setEmailDraft(profileResponse.email ?? "");
+        setSessions(sessionResponse);
+        setApiKeys(keyResponse);
+      } catch {
+        setError("Failed to load settings.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
+  }, []);
+
+  useEffect(() => {
+    if (!notice) return;
+    const id = window.setTimeout(() => setNotice(""), 2200);
+    return () => window.clearTimeout(id);
+  }, [notice]);
+
+  const saveName = async () => {
+    if (!profileName.trim()) return;
+    try {
+      const updated = await updateProfileName(profileName.trim());
+      setProfile(updated);
+      setNotice("Name updated");
+    } catch {
+      setError("Unable to save name.");
+    }
+  };
+
+  const saveEmail = async () => {
+    try {
+      await updateProfileEmail(emailDraft.trim(), emailPassword);
+      setProfile((current) => (current ? { ...current, email: emailDraft.trim() } : current));
+      setIsEmailEditing(false);
+      setIsEmailModalOpen(false);
+      setEmailPassword("");
+      setNotice("Email updated");
+    } catch {
+      setError("Unable to update email. Check your password.");
+    }
+  };
+
+  const savePassword = async () => {
+    const nextErrors: Record<string, string> = {};
+    if (!passwordForm.currentPassword) nextErrors.currentPassword = "Current password is required.";
+    if (!passwordForm.newPassword) nextErrors.newPassword = "New password is required.";
+    if (passwordForm.newPassword.length < 8) nextErrors.newPassword = "Minimum length is 8 characters.";
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      nextErrors.confirmPassword = "Passwords do not match.";
+    }
+    setPasswordErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
+    try {
+      await updateProfilePassword(passwordForm.currentPassword, passwordForm.newPassword);
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      setNotice("Password updated");
+    } catch {
+      setError("Unable to update password.");
+    }
+  };
+
+  const startTwoFactorEnrollment = async () => {
+    try {
+      const response = await getTwoFactorSetup();
+      setTwoFactorSetup(response);
+    } catch {
+      setError("Unable to start 2FA setup.");
+    }
+  };
+
+  const completeTwoFactorEnrollment = async () => {
+    try {
+      await enableTwoFactor(twoFactorToken);
+      setProfile((current) => (current ? { ...current, twoFactorEnabled: true } : current));
+      setTwoFactorSetup(null);
+      setTwoFactorToken("");
+      setNotice("2FA enabled");
+    } catch {
+      setError("Invalid 2FA token.");
+    }
+  };
+
+  const disable2fa = async () => {
+    try {
+      await disableTwoFactor();
+      setProfile((current) => (current ? { ...current, twoFactorEnabled: false } : current));
+      setNotice("2FA disabled");
+    } catch {
+      setError("Unable to disable 2FA.");
+    }
+  };
+
+  const revokeSession = async () => {
+    if (!sessionToRevoke) return;
+    try {
+      await revokeAuthSession(sessionToRevoke);
+      setSessions((current) => current.filter((session) => session.id !== sessionToRevoke));
+      setSessionToRevoke(null);
+      setNotice("Session revoked");
+    } catch {
+      setError("Unable to revoke session.");
+    }
+  };
+
+  const revokeKey = async () => {
+    if (!apiKeyToRevoke) return;
+    try {
+      await revokeApiKey(apiKeyToRevoke);
+      setApiKeys((current) => current.filter((item) => item.id !== apiKeyToRevoke));
+      setApiKeyToRevoke(null);
+      setNotice("API key revoked");
+    } catch {
+      setError("Unable to revoke API key.");
+    }
+  };
+
+  const generateKey = async () => {
+    if (!newKeyName.trim()) return;
+    try {
+      const nextKey = await createApiKey(newKeyName.trim());
+      setCreatedKey(nextKey);
+      setIsCreateKeyModalOpen(false);
+      setNewKeyName("");
+      setApiKeys((current) => [...current, { id: nextKey.id, name: nextKey.name, createdAt: nextKey.createdAt, lastUsedAt: null }]);
+    } catch {
+      setError("Unable to create API key.");
+    }
+  };
+
+  const copyCreatedKey = async () => {
+    if (!createdKey?.key) return;
+    await navigator.clipboard.writeText(createdKey.key);
+    setNotice("API key copied");
+  };
+
+  return (
+    <div>
+      <PageHeader title="Settings" subtitle="Manage your profile, account security, and API keys." />
+      <div className="settings-tabs" role="tablist" aria-label="Settings tabs">
+        <button
+          className={`settings-tab ${activeTab === "profile" ? "active" : ""}`}
+          onClick={() => setActiveTab("profile")}
+          role="tab"
+          type="button"
+        >
+          Profile
+        </button>
+        <button
+          className={`settings-tab ${activeTab === "security" ? "active" : ""}`}
+          onClick={() => setActiveTab("security")}
+          role="tab"
+          type="button"
+        >
+          Security
+        </button>
+        <button
+          className={`settings-tab ${activeTab === "apikeys" ? "active" : ""}`}
+          onClick={() => setActiveTab("apikeys")}
+          role="tab"
+          type="button"
+        >
+          API Keys
+        </button>
+      </div>
+      {error ? <Card className="settings-error">{error}</Card> : null}
+      {loading ? <Card>Loading settings…</Card> : null}
+      {!loading && profile && activeTab === "profile" ? (
+        <Card>
+          <div className="settings-profile-head">
+            {profile.avatarUrl ? (
+              <img src={profile.avatarUrl} alt="Profile avatar" className="profile-avatar-image" />
+            ) : (
+              <div className="profile-avatar-initials">{initials}</div>
+            )}
+            <div>
+              <h3>Profile</h3>
+              <p className="muted">Update your name and email address.</p>
+            </div>
+          </div>
+          <div className="settings-form-grid">
+            <label>
+              <span className="meta-line">Name</span>
+              <Input value={profileName} onChange={(event) => setProfileName(event.target.value)} />
+            </label>
+            <div className="row settings-actions">
+              <Button onClick={() => void saveName()}>Save</Button>
+            </div>
+            <label>
+              <span className="meta-line">Email</span>
+              <Input
+                value={emailDraft}
+                readOnly={!isEmailEditing}
+                onChange={(event) => setEmailDraft(event.target.value)}
+              />
+            </label>
+            <p className="muted">Requires password confirmation.</p>
+            <div className="row settings-actions">
+              {!isEmailEditing ? (
+                <Button variant="secondary" onClick={() => setIsEmailEditing(true)}>Edit</Button>
+              ) : (
+                <Button onClick={() => setIsEmailModalOpen(true)}>Save email</Button>
+              )}
+            </div>
+          </div>
+        </Card>
+      ) : null}
+
+      {!loading && activeTab === "security" ? (
+        <div>
+          <Card>
+            <h3>Change password</h3>
+            <div className="settings-form-grid">
+              <label>
+                <span className="meta-line">Current password</span>
+                <Input
+                  type="password"
+                  value={passwordForm.currentPassword}
+                  onChange={(event) =>
+                    setPasswordForm((current) => ({ ...current, currentPassword: event.target.value }))
+                  }
+                />
+                {passwordErrors.currentPassword ? <p className="field-error">{passwordErrors.currentPassword}</p> : null}
+              </label>
+              <label>
+                <span className="meta-line">New password</span>
+                <Input
+                  type="password"
+                  value={passwordForm.newPassword}
+                  onChange={(event) =>
+                    setPasswordForm((current) => ({ ...current, newPassword: event.target.value }))
+                  }
+                />
+                {passwordErrors.newPassword ? <p className="field-error">{passwordErrors.newPassword}</p> : null}
+              </label>
+              <label>
+                <span className="meta-line">Confirm new password</span>
+                <Input
+                  type="password"
+                  value={passwordForm.confirmPassword}
+                  onChange={(event) =>
+                    setPasswordForm((current) => ({ ...current, confirmPassword: event.target.value }))
+                  }
+                />
+                {passwordErrors.confirmPassword ? <p className="field-error">{passwordErrors.confirmPassword}</p> : null}
+              </label>
+              <div>
+                <Button onClick={() => void savePassword()}>Save password</Button>
+              </div>
+            </div>
+          </Card>
+          <Card>
+            <h3>Two-factor authentication</h3>
+            {profile?.twoFactorEnabled ? (
+              <div>
+                <p>2FA is active ✓</p>
+                <Button variant="danger" onClick={() => setSessionToRevoke("disable-2fa")}>Disable 2FA</Button>
+              </div>
+            ) : (
+              <div>
+                <Button onClick={() => void startTwoFactorEnrollment()}>Enroll in 2FA</Button>
+                {twoFactorSetup ? (
+                  <div className="twofa-setup">
+                    <img src={twoFactorSetup.qrCodeImageUrl} alt="2FA QR code" className="twofa-qr" />
+                    <p>Manual key: <code>{twoFactorSetup.manualKey}</code></p>
+                    <Input
+                      placeholder="Enter TOTP code"
+                      value={twoFactorToken}
+                      onChange={(event) => setTwoFactorToken(event.target.value)}
+                    />
+                    <Button onClick={() => void completeTwoFactorEnrollment()}>Enable 2FA</Button>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </Card>
+          <Card>
+            <h3>Active sessions</h3>
+            {sessions.length === 0 ? <p className="muted">No active sessions found.</p> : null}
+            {sessions.map((session) => (
+              <div key={session.id} className="settings-list-row">
+                <div>
+                  <p>
+                    {session.device} · {session.browser} {session.isCurrent ? "(this session)" : ""}
+                  </p>
+                  <p className="muted">Last seen {formatDate(session.lastSeenAt)}</p>
+                </div>
+                {!session.isCurrent ? (
+                  <Button variant="secondary" onClick={() => setSessionToRevoke(session.id)}>Revoke</Button>
+                ) : null}
+              </div>
+            ))}
+          </Card>
+        </div>
+      ) : null}
+
+      {!loading && activeTab === "apikeys" ? (
+        <Card>
+          <div className="row settings-keys-header">
+            <h3>API keys</h3>
+            <Button onClick={() => setIsCreateKeyModalOpen(true)}>Generate New Key</Button>
+          </div>
+          {apiKeys.length === 0 ? (
+            <p className="muted">No API keys yet. Generate one to begin authenticating with the API.</p>
+          ) : (
+            apiKeys.map((key) => (
+              <div className="settings-list-row" key={key.id}>
+                <div>
+                  <p>{key.name}</p>
+                  <p className="muted">Created {formatDate(key.createdAt)} · Last used {formatDate(key.lastUsedAt)}</p>
+                </div>
+                <Button variant="danger" onClick={() => setApiKeyToRevoke(key.id)}>Revoke</Button>
+              </div>
+            ))
+          )}
+        </Card>
+      ) : null}
+
+      {notice ? <Toast message={notice} /> : null}
+
+      <ConfirmDialog
+        open={Boolean(apiKeyToRevoke)}
+        title="Revoke API key"
+        body="This key will stop working immediately."
+        onCancel={() => setApiKeyToRevoke(null)}
+        onConfirm={() => void revokeKey()}
+      />
+      <ConfirmDialog
+        open={sessionToRevoke === "disable-2fa"}
+        title="Disable 2FA"
+        body="Are you sure you want to disable two-factor authentication?"
+        onCancel={() => setSessionToRevoke(null)}
+        onConfirm={() => {
+          setSessionToRevoke(null);
+          void disable2fa();
+        }}
+      />
+      <ConfirmDialog
+        open={Boolean(sessionToRevoke && sessionToRevoke !== "disable-2fa")}
+        title="Revoke session"
+        body="This device will be signed out immediately."
+        onCancel={() => setSessionToRevoke(null)}
+        onConfirm={() => void revokeSession()}
+      />
+
+      {isEmailModalOpen ? (
+        <div className="dialog-backdrop">
+          <div className="card settings-modal">
+            <h3>Confirm your password</h3>
+            <p className="muted">Enter your current password to update email.</p>
+            <Input
+              type="password"
+              value={emailPassword}
+              onChange={(event) => setEmailPassword(event.target.value)}
+              placeholder="Current password"
+            />
+            <div className="row">
+              <Button variant="secondary" onClick={() => setIsEmailModalOpen(false)}>Cancel</Button>
+              <Button onClick={() => void saveEmail()}>Confirm</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isCreateKeyModalOpen ? (
+        <div className="dialog-backdrop">
+          <div className="card settings-modal">
+            <h3>Generate API key</h3>
+            <Input
+              value={newKeyName}
+              onChange={(event) => setNewKeyName(event.target.value)}
+              placeholder="Key name"
+            />
+            <div className="row">
+              <Button variant="secondary" onClick={() => setIsCreateKeyModalOpen(false)}>Cancel</Button>
+              <Button onClick={() => void generateKey()}>Create key</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {createdKey ? (
+        <div className="dialog-backdrop">
+          <div className="card settings-modal">
+            <h3>New API key created</h3>
+            <p className="muted">This key will not be shown again.</p>
+            <pre className="key-preview">{createdKey.key}</pre>
+            <div className="row">
+              <Button variant="secondary" onClick={() => void copyCreatedKey()}>Copy</Button>
+              <Button onClick={() => setCreatedKey(null)}>Close</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 
 const AdminUsers = ({
   users,
