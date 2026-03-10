@@ -178,6 +178,7 @@ partial class CaselogDbContextModelSnapshot : ModelSnapshot
             b.Property<Guid>("Id");
             b.Property<Guid>("MindMapId");
             b.Property<Guid>("PageId");
+            b.Property<int>("SortOrder");
             b.HasKey("Id");
             b.HasIndex("MindMapId");
             b.HasIndex("PageId");

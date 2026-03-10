@@ -13,3 +13,27 @@ public sealed record PageResponse(
     string? PublicSlug,
     DateTime CreatedAt,
     DateTime UpdatedAt);
+
+public sealed record PageAttachmentsResponse(
+    IReadOnlyList<PageListAttachmentResponse> ListEntries,
+    IReadOnlyList<PageMindMapAttachmentResponse> MindMaps);
+
+public sealed record PageListAttachmentResponse(
+    Guid AttachmentId,
+    Guid ListEntryId,
+    Guid ListTypeId,
+    int SortOrder,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
+
+public sealed record PageMindMapAttachmentResponse(
+    Guid AttachmentId,
+    Guid MindMapId,
+    string Title,
+    int SortOrder,
+    DateTime CreatedAt,
+    DateTime UpdatedAt);
+
+public sealed record PageListAttachmentRequest(Guid ListEntryId, int? SortOrder);
+
+public sealed record PageMindMapAttachmentRequest(Guid MindMapId, int? SortOrder);
