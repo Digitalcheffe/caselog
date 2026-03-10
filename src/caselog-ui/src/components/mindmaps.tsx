@@ -23,7 +23,7 @@ import {
   type Page,
 } from "../api";
 import type { ApiError } from "../api/client";
-import { Button, Card, CardGrid, EmptyState, Input, MetadataLine, PageHeader, Spinner } from "./ui";
+import { Button, Card, EmptyState, Input, MetadataLine, PageHeader, Spinner } from "./ui";
 
 const flattenNodes = (root: MindMapNode): MindMapNode[] => {
   const stack = [root];
@@ -100,16 +100,16 @@ export const MindMapsIndexPage = ({ navigate, onToast }: { navigate: (path: stri
       {!loading && !error && mindMaps.length === 0 ? (
         <EmptyState title="No mind maps yet" body="Create one to start mapping ideas." />
       ) : !loading && !error ? (
-        <CardGrid>
+        <div className="index-grid">
           {mindMaps.map((map) => (
             <Card key={map.id}>
               <MetadataLine>{new Date(map.updatedAt).toLocaleDateString()}</MetadataLine>
               <h3>{map.title}</h3>
               <p className="muted">{map.nodeCount} nodes</p>
-              <Button variant="secondary" onClick={() => navigate(`/mindmaps/${map.id}`)}>Open</Button>
+              <Button onClick={() => navigate(`/mindmaps/${map.id}`)}>Open</Button>
             </Card>
           ))}
-        </CardGrid>
+        </div>
       ) : null}
       {open ? (
         <div className="dialog-backdrop">

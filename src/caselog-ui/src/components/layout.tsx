@@ -65,6 +65,7 @@ export const TopNav = ({ onNavigate, onSearch, searchValue, onToggleTheme, isDar
 
 export const Sidebar = ({ onNavigate, isAdmin, currentPath }: { onNavigate: (path: string) => void; isAdmin: boolean; currentPath: string }) => (
   <aside className="sidebar" aria-label="Sidebar navigation">
+    <p className="sidebar-section-label">Navigation</p>
     {sidebarItems.filter((item) => !item.adminOnly || isAdmin).map((item) => (
       <button key={item.path} type="button" className={`sidebar-link ${isActivePath(currentPath, item.path) ? 'active' : ''}`.trim()} onClick={() => onNavigate(item.path)}>
         <span aria-hidden="true">{item.icon}</span>

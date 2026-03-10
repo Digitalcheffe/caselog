@@ -504,6 +504,7 @@ const Dashboard = ({
   const [recentPages, setRecentPages] = useState<Page[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [quickCaptureDraft, setQuickCaptureDraft] = useState("");
 
   useEffect(() => {
     void getRecentPages()
@@ -534,7 +535,24 @@ const Dashboard = ({
       </Card>
       <Card>
         <h3>Quick capture</h3>
-        <Textarea onBlur={(e) => e.target.value.trim() && onQuickCapture(e.target.value)} />
+        <Textarea
+          className="quick-capture-input"
+          placeholder="Capture a thought, link, or note..."
+          value={quickCaptureDraft}
+          onChange={(event) => setQuickCaptureDraft(event.target.value)}
+        />
+        <div className="quick-capture-actions">
+          <Button
+            onClick={() => {
+              const next = quickCaptureDraft.trim();
+              if (!next) return;
+              onQuickCapture(next);
+              setQuickCaptureDraft("");
+            }}
+          >
+            Capture
+          </Button>
+        </div>
       </Card>
     </div>
   );
@@ -554,7 +572,15 @@ const FollowUps = () => {
 
   if (loading) return <Card><Spinner /></Card>;
   if (error) return <Card><p>{error}</p></Card>;
-  if (open.length === 0) return <EmptyState title="No follow-ups" body="Everything is clear." />;
+  if (open.length === 0) {
+    return (
+      <Card className="followups-empty">
+        <div className="followups-empty-check" aria-hidden="true">✓</div>
+        <p className="followups-empty-title">No follow-ups</p>
+        <p className="followups-empty-body">Everything is clear.</p>
+      </Card>
+    );
+  }
 
   return (
     <div>
@@ -670,17 +696,17 @@ const ListsIndexPage = ({
       {lists.length === 0 ? (
         <EmptyState title="No lists yet" body="Create your first list to start tracking structured data." />
       ) : (
-        <CardGrid>
+        <div className="index-grid">
           {lists.map((list) => (
             <Card key={list.id}>
               <h3>{list.name}</h3>
-              <MetadataLine>{list.description || "No description"}</MetadataLine>
+              <MetadataLine className={!list.description ? "fallback-description" : undefined}>{list.description || "No description"}</MetadataLine>
               <p className="muted">Fields: {counts[list.id]?.fields ?? 0}</p>
               <p className="muted">Entries: {counts[list.id]?.entries ?? 0}</p>
               <Button onClick={() => navigate(`/lists/${list.id}`)}>Open</Button>
             </Card>
           ))}
-        </CardGrid>
+        </div>
       )}
       {open ? (
         <div className="dialog-backdrop">
