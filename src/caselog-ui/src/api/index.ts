@@ -63,6 +63,7 @@ export type ProfileResponse = {
   name: string;
   email: string;
   twoFactorEnabled: boolean;
+  avatarUrl?: string;
 };
 
 export type MindMap = {
