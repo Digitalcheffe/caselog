@@ -15,3 +15,17 @@ export const db = {
   pages: () => load<Page[]>('pages', [{ id: 'p1', title: 'Welcome', content: 'Start writing...', tags: ['source:manual'], visibility: 'private', followUp: false, attachments: 0, notebookId: 'n1' }]),
   setPages: (pages: Page[]) => save('pages', pages)
 };
+
+export const updatePage = async (id: string, body: Partial<Pick<Page, 'title' | 'content' | 'visibility' | 'followUp'>>) => {
+  const response = await fetch(`/api/pages/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to update page (${response.status})`);
+  }
+};
