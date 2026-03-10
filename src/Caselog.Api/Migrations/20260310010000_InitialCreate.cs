@@ -1,13 +1,11 @@
 using System;
 using Caselog.Api.Data;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Caselog.Api.Migrations;
 
-[DbContext(typeof(CaselogDbContext))]
 [Migration("20260310010000_InitialCreate")]
 public partial class InitialCreate : Migration
 {
