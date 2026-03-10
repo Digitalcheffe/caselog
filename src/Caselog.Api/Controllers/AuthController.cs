@@ -48,6 +48,21 @@ public sealed class AuthController(
         return Ok(new ApiEnvelope<LoginResponse>(new LoginResponse(false, token)));
     }
 
+
+    [Authorize]
+    [HttpGet("me")]
+    public async Task<ActionResult<ApiEnvelope<AuthMeResponse>>> GetCurrentUser(CancellationToken cancellationToken)
+    {
+        var userId = GetUserId();
+        var user = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        if (user is null)
+        {
+            return NotFoundProblem("Authenticated user was not found.");
+        }
+
+        return Ok(new ApiEnvelope<AuthMeResponse>(new AuthMeResponse(user.Id, user.Email, user.Email, user.Role.ToString().ToLowerInvariant(), user.TwoFactorEnabled)));
+    }
+
     [Authorize]
     [HttpPost("logout")]
     public ActionResult<ApiEnvelope<LogoutResponse>> Logout()
@@ -70,6 +85,44 @@ public sealed class AuthController(
         return Ok(new ApiEnvelope<TwoFactorSetupResponse>(new TwoFactorSetupResponse(secret, qrCode)));
     }
 
+
+    [Authorize]
+    [HttpPost("change-password")]
+    public async Task<ActionResult<ApiEnvelope<object>>> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken cancellationToken)
+    {
+        var userId = GetUserId();
+        var user = await dbContext.Users.SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        if (user is null)
+        {
+            return NotFoundProblem("Authenticated user was not found.");
+        }
+
+        if (!PasswordHasher.Verify(request.CurrentPassword, user.PasswordHash))
+        {
+            return Unauthorized(new ApiEnvelope<object>(null, new { message = "Current password is incorrect." }));
+        }
+
+        user.PasswordHash = PasswordHasher.Hash(request.NewPassword);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Ok(new ApiEnvelope<object>(new { changed = true }));
+    }
+
+    [Authorize]
+    [HttpDelete("2fa")]
+    public async Task<ActionResult<ApiEnvelope<object>>> DisableTwoFactor(CancellationToken cancellationToken)
+    {
+        var userId = GetUserId();
+        var user = await dbContext.Users.SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+        if (user is null)
+        {
+            return NotFoundProblem("Authenticated user was not found.");
+        }
+
+        user.TwoFactorEnabled = false;
+        user.TwoFactorSecret = null;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return Ok(new ApiEnvelope<object>(new { disabled = true }));
+    }
     [AllowAnonymous]
     [HttpPost("2fa/verify")]
     public async Task<ActionResult<ApiEnvelope<LoginResponse>>> VerifyTwoFactor([FromBody] TwoFactorVerifyRequest request, CancellationToken cancellationToken)

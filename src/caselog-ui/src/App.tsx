@@ -19,17 +19,13 @@ import {
   disableTwoFactor,
   enableTwoFactor,
   getApiKeys,
-  getAuthSessions,
   getProfile,
   getTwoFactorSetup,
   revokeApiKey,
-  revokeAuthSession,
   deleteAdminUser,
   deleteEntry,
   deleteListField,
   deletePage,
-  exitAdminImpersonation,
-  forceAdminUserResetPassword,
   getAdminUser,
   getAdminUsers,
   getList,
@@ -52,7 +48,6 @@ import {
   type Page,
   type ProfileResponse,
   type Shelf,
-  impersonateAdminUser,
   toggleAdminUserStatus,
   updateAdminUser,
   updateEntry,
@@ -124,7 +119,6 @@ const AppInner = () => {
   const [listEntries, setListEntries] = useState<ListEntry[]>([]);
   const [toast, setToast] = useState("");
   const [currentUserRole] = useState<"admin" | "member">("admin");
-  const [impersonatingUser, setImpersonatingUser] = useState<{ id: string; name: string } | null>(null);
   const isAdmin = currentUserRole === "admin";
 
   const token = authStorage.getToken();
@@ -145,16 +139,6 @@ const AppInner = () => {
     return () => window.clearTimeout(id);
   }, [toast]);
 
-  useEffect(() => {
-    document.documentElement.style.setProperty(
-      "--impersonation-banner-height",
-      impersonatingUser ? "42px" : "0px",
-    );
-
-    return () => {
-      document.documentElement.style.setProperty("--impersonation-banner-height", "0px");
-    };
-  }, [impersonatingUser]);
 
   useEffect(() => {
     const id = window.setTimeout(() => setDebouncedSearch(search), 300);
@@ -428,7 +412,6 @@ const AppInner = () => {
           selectedId={params.id}
           currentRoute={currentRoute}
           onToast={setToast}
-          onImpersonatingChange={setImpersonatingUser}
         />
       );
       break;
@@ -456,29 +439,6 @@ const AppInner = () => {
 
   return (
     <>
-      {impersonatingUser ? (
-        <div className="impersonation-banner">
-          ⚠ Impersonating {impersonatingUser.name} — {" "}
-          <button
-            type="button"
-            className="impersonation-exit"
-            onClick={() => {
-              void (async () => {
-                try {
-                  await exitAdminImpersonation();
-                } catch {
-                  // noop
-                } finally {
-                  setImpersonatingUser(null);
-                  window.location.reload();
-                }
-              })();
-            }}
-          >
-            Exit Impersonation
-          </button>
-        </div>
-      ) : null}
       <AppShell
         onNavigate={navigate}
         onSearch={setSearch}
@@ -705,7 +665,7 @@ const ListsIndexPage = ({
     <div>
       <PageHeader
         title="Lists"
-        actions={<Button onClick={() => setOpen(true)}>New List</Button>}
+        actions={<Button onClick={() => void createList("Untitled List").then((created) => { onListsChange([...lists, created]); navigate(`/lists/${created.id}`); }).catch(() => onToast("Failed to create list"))}>New List</Button>}
       />
       {lists.length === 0 ? (
         <EmptyState title="No lists yet" body="Create your first list to start tracking structured data." />
@@ -1162,7 +1122,7 @@ const ShelfDetailPage = ({
 }) => {
   const createNewNotebook = async () => {
     try {
-      const created = await createShelfNotebook(shelf.id, { title: "Untitled Notebook" });
+      const created = await createShelfNotebook(shelf.id, { name: "Untitled" });
       onNotebookCreated(created);
       onToast("Notebook created");
     } catch {
@@ -1788,10 +1748,7 @@ const SettingsPage = () => {
   const [passwordErrors, setPasswordErrors] = useState<Record<string, string>>({});
   const [twoFactorSetup, setTwoFactorSetup] = useState<{ qrCode: string; secret: string } | null>(null);
   const [twoFactorToken, setTwoFactorToken] = useState("");
-  const [sessions, setSessions] = useState<
-    Array<{ id: string; device: string; browser: string; lastSeenAt: string; isCurrent: boolean }>
-  >([]);
-  const [sessionToRevoke, setSessionToRevoke] = useState<string | null>(null);
+  const [disableTwoFactorConfirmOpen, setDisableTwoFactorConfirmOpen] = useState(false);
   const [apiKeys, setApiKeys] = useState<Array<{ id: string; name: string; createdAt: string; lastUsedAt?: string | null }>>([]);
   const [apiKeyToRevoke, setApiKeyToRevoke] = useState<string | null>(null);
   const [isCreateKeyModalOpen, setIsCreateKeyModalOpen] = useState(false);
@@ -1833,15 +1790,13 @@ const SettingsPage = () => {
       setLoading(true);
       setError("");
       try {
-        const [profileResponse, sessionResponse, keyResponse] = await Promise.all([
+        const [profileResponse, keyResponse] = await Promise.all([
           getProfile(),
-          getAuthSessions(),
           getApiKeys(),
         ]);
         setProfile(profileResponse);
         setProfileName(profileResponse.name ?? "");
         setEmailDraft(profileResponse.email ?? "");
-        setSessions(sessionResponse);
         setApiKeys(keyResponse);
       } catch {
         setError("Failed to load settings.");
@@ -1860,9 +1815,9 @@ const SettingsPage = () => {
   }, [notice]);
 
   const saveName = async () => {
-    if (!profileName.trim()) return;
+    if (!profile || !profileName.trim()) return;
     try {
-      const updated = await updateProfileName(profileName.trim());
+      const updated = await updateProfileName(profile.id, profileName.trim());
       setProfile(updated);
       setNotice("Name updated");
     } catch {
@@ -1871,8 +1826,9 @@ const SettingsPage = () => {
   };
 
   const saveEmail = async () => {
+    if (!profile) return;
     try {
-      await updateProfileEmail(emailDraft.trim(), emailPassword);
+      await updateProfileEmail(profile.id, emailDraft.trim());
       setProfile((current: ProfileResponse | null) => (current ? { ...current, email: emailDraft.trim() } : current));
       setIsEmailEditing(false);
       setIsEmailModalOpen(false);
@@ -1934,17 +1890,6 @@ const SettingsPage = () => {
     }
   };
 
-  const revokeSession = async () => {
-    if (!sessionToRevoke) return;
-    try {
-      await revokeAuthSession(sessionToRevoke);
-      setSessions((current) => current.filter((session) => session.id !== sessionToRevoke));
-      setSessionToRevoke(null);
-      setNotice("Session revoked");
-    } catch {
-      setError("Unable to revoke session.");
-    }
-  };
 
   const revokeKey = async () => {
     if (!apiKeyToRevoke) return;
@@ -2097,7 +2042,7 @@ const SettingsPage = () => {
             {profile?.twoFactorEnabled ? (
               <div>
                 <p>2FA is active ✓</p>
-                <Button variant="danger" onClick={() => setSessionToRevoke("disable-2fa")}>Disable 2FA</Button>
+                <Button variant="danger" onClick={() => setDisableTwoFactorConfirmOpen(true)}>Disable 2FA</Button>
               </div>
             ) : (
               <div>
@@ -2119,20 +2064,7 @@ const SettingsPage = () => {
           </Card>
           <Card>
             <h3>Active sessions</h3>
-            {sessions.length === 0 ? <p className="muted">No active sessions found.</p> : null}
-            {sessions.map((session) => (
-              <div key={session.id} className="settings-list-row">
-                <div>
-                  <p>
-                    {session.device} · {session.browser} {session.isCurrent ? "(this session)" : ""}
-                  </p>
-                  <p className="muted">Last seen {formatDate(session.lastSeenAt)}</p>
-                </div>
-                {!session.isCurrent ? (
-                  <Button variant="secondary" onClick={() => setSessionToRevoke(session.id)}>Revoke</Button>
-                ) : null}
-              </div>
-            ))}
+            <p className="muted">Session management coming soon.</p>
           </Card>
         </div>
       ) : null}
@@ -2169,21 +2101,14 @@ const SettingsPage = () => {
         onConfirm={() => void revokeKey()}
       />
       <ConfirmDialog
-        open={sessionToRevoke === "disable-2fa"}
+        open={disableTwoFactorConfirmOpen}
         title="Disable 2FA"
         body="Are you sure you want to disable two-factor authentication?"
-        onCancel={() => setSessionToRevoke(null)}
+        onCancel={() => setDisableTwoFactorConfirmOpen(false)}
         onConfirm={() => {
-          setSessionToRevoke(null);
+          setDisableTwoFactorConfirmOpen(false);
           void disable2fa();
         }}
-      />
-      <ConfirmDialog
-        open={Boolean(sessionToRevoke && sessionToRevoke !== "disable-2fa")}
-        title="Revoke session"
-        body="This device will be signed out immediately."
-        onCancel={() => setSessionToRevoke(null)}
-        onConfirm={() => void revokeSession()}
       />
 
       {isEmailModalOpen ? (
@@ -2246,14 +2171,12 @@ const AdminUsers = ({
   selectedId,
   currentRoute,
   onToast,
-  onImpersonatingChange,
 }: {
   navigate: (path: string) => void;
   isAdmin: boolean;
   selectedId?: string;
   currentRoute: string;
   onToast: (value: string) => void;
-  onImpersonatingChange: (value: { id: string; name: string } | null) => void;
 }) => {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2521,21 +2444,6 @@ const AdminUsers = ({
             >
               Save
             </Button>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                void (async () => {
-                  try {
-                    await forceAdminUserResetPassword(selectedId);
-                    onToast("Password reset triggered");
-                  } catch {
-                    onToast("Failed to trigger password reset");
-                  }
-                })();
-              }}
-            >
-              Force password reset
-            </Button>
             <Button variant="secondary" onClick={() => navigate("/admin/users")}>
               Cancel
             </Button>
@@ -2613,22 +2521,6 @@ const AdminUsers = ({
                   <div className="row admin-table-actions">
                     <Button variant="ghost" onClick={() => navigate(`/admin/users/${user.id}`)}>
                       Edit
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => {
-                        void (async () => {
-                          try {
-                            const result = await impersonateAdminUser(user.id);
-                            onImpersonatingChange({ id: user.id, name: user.name });
-                            window.location.reload();
-                          } catch {
-                            onToast("Failed to impersonate user");
-                          }
-                        })();
-                      }}
-                    >
-                      Impersonate
                     </Button>
                     <Button
                       variant="secondary"
