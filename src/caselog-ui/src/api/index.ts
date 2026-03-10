@@ -370,3 +370,66 @@ export const attachListToPage = async (listId: string, pageId: string): Promise<
     body: JSON.stringify({ pageId }),
   });
 };
+
+export type AdminUser = {
+  id: string;
+  name: string;
+  email: string;
+  role: "admin" | "member";
+  enabled: boolean;
+  lastLoginAt: string | null;
+};
+
+export type AdminUserInput = {
+  name: string;
+  email: string;
+  password: string;
+  role: "admin" | "member";
+};
+
+export type AdminUserUpdateInput = {
+  name: string;
+  email: string;
+  role: "admin" | "member";
+  enabled: boolean;
+};
+
+export const getAdminUsers = async (): Promise<AdminUser[]> => apiRequest<AdminUser[]>("/api/admin/users");
+
+export const getAdminUser = async (id: string): Promise<AdminUser> =>
+  apiRequest<AdminUser>(`/api/admin/users/${id}`);
+
+export const createAdminUser = async (payload: AdminUserInput): Promise<AdminUser> =>
+  apiRequest<AdminUser>("/api/admin/users", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+export const updateAdminUser = async (id: string, payload: AdminUserUpdateInput): Promise<AdminUser> =>
+  apiRequest<AdminUser>(`/api/admin/users/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+
+export const deleteAdminUser = async (id: string): Promise<void> => {
+  await apiRequest<unknown>(`/api/admin/users/${id}`, { method: "DELETE" });
+};
+
+export const toggleAdminUserStatus = async (id: string, enabled: boolean): Promise<void> => {
+  await apiRequest<unknown>(`/api/admin/users/${id}/${enabled ? "enable" : "disable"}`, {
+    method: "POST",
+  });
+};
+
+export const forceAdminUserResetPassword = async (id: string): Promise<void> => {
+  await apiRequest<unknown>(`/api/admin/users/${id}/reset-password`, { method: "POST" });
+};
+
+export const impersonateAdminUser = async (id: string): Promise<{ token: string }> =>
+  apiRequest<{ token: string }>(`/api/admin/users/${id}/impersonate`, {
+    method: "POST",
+  });
+
+export const exitAdminImpersonation = async (): Promise<void> => {
+  await apiRequest<unknown>("/api/admin/impersonate/exit", { method: "POST" });
+};

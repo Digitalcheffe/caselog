@@ -2,6 +2,7 @@
   --top-nav-height: 64px;
   --sidebar-width: 220px;
   --content-padding: 24px;
+  --impersonation-banner-height: 0px;
   --color-bg-base: #111111;
   --color-bg-surface: #1e1e1e;
   --color-bg-elevated: #242424;
@@ -48,7 +49,7 @@ button {
 
 .top-nav-wrap {
   position: fixed;
-  top: 0;
+  top: var(--impersonation-banner-height);
   left: 0;
   right: 0;
   height: var(--top-nav-height);
@@ -141,7 +142,7 @@ button {
 
 .sidebar {
   position: fixed;
-  top: var(--top-nav-height);
+  top: calc(var(--top-nav-height) + var(--impersonation-banner-height));
   left: 0;
   width: var(--sidebar-width);
   height: calc(100vh - var(--top-nav-height));
@@ -164,7 +165,7 @@ button {
 }
 
 .main-content {
-  margin-top: var(--top-nav-height);
+  margin-top: calc(var(--top-nav-height) + var(--impersonation-banner-height));
   margin-left: var(--sidebar-width);
   padding: var(--content-padding);
   min-height: calc(100vh - var(--top-nav-height));
@@ -570,4 +571,68 @@ button {
   margin: 12px 0;
   max-height: 300px;
   overflow: auto;
+}
+
+
+.impersonation-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+  padding: 10px 16px;
+  text-align: center;
+}
+
+.impersonation-exit {
+  border: 0;
+  background: transparent;
+  color: #fff;
+  text-decoration: underline;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.admin-users-table-wrap {
+  overflow-x: auto;
+}
+
+.admin-users-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.admin-users-table th,
+.admin-users-table td {
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+  padding: 10px 8px;
+  vertical-align: middle;
+}
+
+.admin-users-table th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-secondary);
+}
+
+.admin-table-actions {
+  flex-wrap: wrap;
+}
+
+.admin-form-card {
+  max-width: 560px;
+}
+
+.admin-enabled-toggle {
+  margin: 12px 0;
+}
+
+.admin-actions-row {
+  margin-top: 12px;
+  flex-wrap: wrap;
 }
