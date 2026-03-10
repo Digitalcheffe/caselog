@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace Caselog.Api.Migrations;
 
 [DbContext(typeof(CaselogDbContext))]
-[Migration("20260309000100_InitialCreate")]
+[Migration("20260310010000_InitialCreate")]
 public partial class InitialCreate : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
@@ -90,7 +90,8 @@ public partial class InitialCreate : Migration
                 TwoFactorEnabled = table.Column<bool>(type: "INTEGER", nullable: false),
                 TwoFactorSecret = table.Column<string>(type: "TEXT", nullable: true),
                 CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                LastLoginAt = table.Column<DateTime>(type: "TEXT", nullable: true)
+                LastLoginAt = table.Column<DateTime>(type: "TEXT", nullable: true),
+                IsDisabled = table.Column<bool>(type: "INTEGER", nullable: false)
             },
             constraints: table => table.PrimaryKey("PK_Users", x => x.Id));
 
@@ -266,7 +267,8 @@ public partial class InitialCreate : Migration
             {
                 Id = table.Column<Guid>(type: "TEXT", nullable: false),
                 PageId = table.Column<Guid>(type: "TEXT", nullable: false),
-                MindMapId = table.Column<Guid>(type: "TEXT", nullable: false)
+                MindMapId = table.Column<Guid>(type: "TEXT", nullable: false),
+                SortOrder = table.Column<int>(type: "INTEGER", nullable: false)
             },
             constraints: table =>
             {

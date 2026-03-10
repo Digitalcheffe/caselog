@@ -32,6 +32,7 @@ public class User
     public string? TwoFactorSecret { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime? LastLoginAt { get; set; }
+    public bool IsDisabled { get; set; }
 
     public ICollection<UserApiKey> ApiKeys { get; set; } = new List<UserApiKey>();
 }

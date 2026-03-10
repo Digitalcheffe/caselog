@@ -18,33 +18,42 @@ public class ApiKeyAuthenticationHandler(
     {
         if (!Request.Headers.TryGetValue("Authorization", out var authorizationHeaderValues))
         {
-            return AuthenticateResult.Fail("Missing Authorization header.");
+            return AuthenticateResult.NoResult();
         }
 
         var authorizationHeader = authorizationHeaderValues.ToString().Trim();
         const string bearerPrefix = "Bearer ";
         if (!authorizationHeader.StartsWith(bearerPrefix, StringComparison.OrdinalIgnoreCase))
         {
-            return AuthenticateResult.Fail("Invalid Authorization header format.");
+            return AuthenticateResult.NoResult();
         }
 
-        var apiKey = authorizationHeader[bearerPrefix.Length..].Trim();
-        if (string.IsNullOrWhiteSpace(apiKey))
+        var token = authorizationHeader[bearerPrefix.Length..].Trim();
+        if (string.IsNullOrWhiteSpace(token))
         {
-            return AuthenticateResult.Fail("Missing API key token.");
+            return AuthenticateResult.NoResult();
         }
 
-        var keyHash = ApiKeyHasher.Hash(apiKey);
+        if (token.Count(c => c == '.') == 2)
+        {
+            return AuthenticateResult.NoResult();
+        }
+
+        var keyHash = ApiKeyHasher.Hash(token);
 
         var matchedKey = await dbContext.UserApiKeys
             .AsNoTracking()
             .Include(x => x.User)
             .SingleOrDefaultAsync(x => x.KeyHash == keyHash, Context.RequestAborted);
 
-        if (matchedKey is null)
+        if (matchedKey is null || matchedKey.User.IsDisabled)
         {
             return AuthenticateResult.Fail("Invalid API key.");
         }
+
+        await dbContext.UserApiKeys
+            .Where(x => x.Id == matchedKey.Id)
+            .ExecuteUpdateAsync(update => update.SetProperty(x => x.LastUsedAt, DateTime.UtcNow), Context.RequestAborted);
 
         var claims = new List<Claim>
         {

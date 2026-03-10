@@ -3,6 +3,7 @@ using Caselog.Api.Data;
 using Caselog.Api.Data.Entities;
 using Caselog.Api.Services;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -26,8 +27,44 @@ builder.Services.AddDbContext<CaselogDbContext>(options =>
     options.UseSqlite($"Data Source={dataPath}",
         sqliteOptions => sqliteOptions.MigrationsAssembly(typeof(CaselogDbContext).Assembly.GetName().Name)));
 
+builder.Services.AddScoped<JwtTokenService>();
+builder.Services.AddSingleton<LoginRateLimiter>();
+builder.Services.AddSingleton<TotpService>();
+builder.Services.AddScoped<SmtpEmailService>();
+
+var jwtTokenService = new JwtTokenService(builder.Configuration);
+
 builder.Services
-    .AddAuthentication(ApiKeyAuthenticationDefaults.Scheme)
+    .AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtAuthenticationDefaults.CombinedScheme;
+        options.DefaultChallengeScheme = JwtAuthenticationDefaults.CombinedScheme;
+    })
+    .AddPolicyScheme(JwtAuthenticationDefaults.CombinedScheme, JwtAuthenticationDefaults.CombinedScheme, options =>
+    {
+        options.ForwardDefaultSelector = context =>
+        {
+            if (!context.Request.Headers.TryGetValue("Authorization", out var authHeader))
+            {
+                return ApiKeyAuthenticationDefaults.Scheme;
+            }
+
+            var value = authHeader.ToString();
+            if (value.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                var token = value["Bearer ".Length..].Trim();
+                return token.Count(c => c == '.') == 2
+                    ? JwtBearerDefaults.AuthenticationScheme
+                    : ApiKeyAuthenticationDefaults.Scheme;
+            }
+
+            return ApiKeyAuthenticationDefaults.Scheme;
+        };
+    })
+    .AddJwtBearer(JwtBearerDefaults.AuthenticationScheme, options =>
+    {
+        options.TokenValidationParameters = jwtTokenService.GetValidationParameters();
+    })
     .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyAuthenticationDefaults.Scheme, _ => { });
 
 builder.Services.AddAuthorization();
@@ -87,9 +124,10 @@ await using (var scope = app.Services.CreateAsyncScope())
         {
             Id = Guid.NewGuid(),
             Email = "admin@caselog.local",
-            PasswordHash = string.Empty,
+            PasswordHash = PasswordHasher.Hash("ChangeMe123!"),
             Role = UserRole.Admin,
-            CreatedAt = createdAt
+            CreatedAt = createdAt,
+            IsDisabled = false
         };
 
         var adminApiKey = new UserApiKey
@@ -108,6 +146,7 @@ await using (var scope = app.Services.CreateAsyncScope())
         logger.LogWarning("========================================================");
         logger.LogWarning("Caselog default admin account created.");
         logger.LogWarning("Email: {Email}", adminUser.Email);
+        logger.LogWarning("Password: ChangeMe123! (rotate immediately)");
         logger.LogWarning("API Key (shown once): {ApiKey}", defaultApiKey);
         logger.LogWarning("Store this key securely. It will not be shown again.");
         logger.LogWarning("========================================================");
@@ -210,35 +249,6 @@ static async Task<HashSet<string>> GetExistingTableNamesAsync(CaselogDbContext d
     return existingTables;
 }
 
-app.UseWhen(
-    context => context.Request.Path.StartsWithSegments("/api"),
-    branch =>
-    {
-        branch.Use(async (context, next) =>
-        {
-            var authenticateResult = await context.AuthenticateAsync(ApiKeyAuthenticationDefaults.Scheme);
-            if (authenticateResult.Succeeded && authenticateResult.Principal is not null)
-            {
-                context.User = authenticateResult.Principal;
-                await next();
-                return;
-            }
-
-            var problem = new ProblemDetails
-            {
-                Type = "https://tools.ietf.org/html/rfc9110#section-15.5.2",
-                Title = "Unauthorized",
-                Status = StatusCodes.Status401Unauthorized,
-                Detail = "A valid API key is required in the Authorization header as Bearer token.",
-                Instance = context.Request.Path
-            };
-
-            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            context.Response.ContentType = "application/problem+json";
-            await context.Response.WriteAsJsonAsync(problem);
-        });
-    });
-
 app.UseSwagger();
 app.UseSwaggerUI(options =>
 {
@@ -249,11 +259,11 @@ app.UseSwaggerUI(options =>
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
-app.MapGet("/public/{**slug}", (string slug) => Results.NotFound(new { slug }));
 
 app.MapFallbackToFile("index.html");
 
