@@ -20,7 +20,7 @@ import {
   type MindMap,
   type MindMapDetail,
   type MindMapNode,
-  type Page,
+  type Log,
 } from "../api";
 import type { ApiError } from "../api/client";
 import { Button, Card, EmptyState, Input, MetadataLine, PageHeader, Spinner } from "./ui";
@@ -144,7 +144,7 @@ export const MindMapEditorPage = ({ id, onToast }: { id: string; onToast: (value
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
   const [attachOpen, setAttachOpen] = useState(false);
   const [pageQuery, setPageQuery] = useState("");
-  const [pages, setPages] = useState<Page[]>([]);
+  const [logs, setPages] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const saveTimer = useRef<number | null>(null);
@@ -221,7 +221,7 @@ export const MindMapEditorPage = ({ id, onToast }: { id: string; onToast: (value
       <div className="mindmap-toolbar">
         <Button variant="secondary" disabled={!selectedId} onClick={() => selectedId && void createMindMapNode(id, { parentId: selectedId, label: "New node" }).then(load)}>Add child</Button>
         <Button variant="danger" disabled={!selectedId} onClick={() => selectedId && void deleteMindMapNode(id, selectedId).then(load)}>Delete node</Button>
-        <Button variant="secondary" onClick={async () => { setPages(await getPages()); setAttachOpen(true); }}>Attach to Page</Button>
+        <Button variant="secondary" onClick={async () => { setPages(await getPages()); setAttachOpen(true); }}>Attach to Log</Button>
       </div>
       <div className="mindmap-canvas">
         <ReactFlow
@@ -277,10 +277,10 @@ export const MindMapEditorPage = ({ id, onToast }: { id: string; onToast: (value
       {attachOpen ? (
         <div className="dialog-backdrop">
           <Card className="mindmap-modal">
-            <h3>Attach to Page</h3>
-            <Input value={pageQuery} onChange={(event) => setPageQuery(event.target.value)} placeholder="Search pages" />
+            <h3>Attach to Log</h3>
+            <Input value={pageQuery} onChange={(event) => setPageQuery(event.target.value)} placeholder="Search logs" />
             <div className="mindmap-attach-list">
-              {pages.filter((page) => page.title.toLowerCase().includes(pageQuery.toLowerCase())).map((page) => (
+              {logs.filter((page) => page.title.toLowerCase().includes(pageQuery.toLowerCase())).map((page) => (
                 <button key={page.id} type="button" onClick={async () => {
                   await attachMindMapToPage(id, page.id);
                   setAttachOpen(false);

@@ -22,7 +22,7 @@ const navItems: LinkItem[] = [
 ];
 
 const sidebarItems: LinkItem[] = [
-  { to: '/shelves', label: 'Shelves' },
+  { to: '/kases', label: 'Kases' },
   { to: '/lists', label: 'Lists' },
   { to: '/mindmaps', label: 'Mind Maps' },
   { to: '/notes', label: 'Notes' },

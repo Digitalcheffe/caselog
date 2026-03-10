@@ -16,16 +16,16 @@ public sealed class NotesController(CaselogDbContext dbContext, NoteSearchIndexS
     public async Task<ActionResult<ApiEnvelope<PagedResult<NoteResponse>>>> GetNotes([FromQuery] PaginationQuery query, CancellationToken cancellationToken)
     {
         var userId = GetUserId();
-        var page = query.NormalizedPage;
+        var log = query.NormalizedPage;
         var pageSize = query.NormalizedPageSize;
 
         var baseQuery = dbContext.Notes.AsNoTracking().Where(x => x.UserId == userId).OrderByDescending(x => x.UpdatedAt);
         var totalCount = await baseQuery.CountAsync(cancellationToken);
-        var items = await baseQuery.Skip((page - 1) * pageSize).Take(pageSize)
+        var items = await baseQuery.Skip((log - 1) * pageSize).Take(pageSize)
             .Select(MapToResponse())
             .ToListAsync(cancellationToken);
 
-        return Ok(new ApiEnvelope<PagedResult<NoteResponse>>(new PagedResult<NoteResponse>(items, new PaginationMeta(page, pageSize, totalCount, (int)Math.Ceiling(totalCount / (double)pageSize)))));
+        return Ok(new ApiEnvelope<PagedResult<NoteResponse>>(new PagedResult<NoteResponse>(items, new PaginationMeta(log, pageSize, totalCount, (int)Math.Ceiling(totalCount / (double)pageSize)))));
     }
 
     [HttpGet("notes/{id:guid}")]
@@ -118,17 +118,17 @@ public sealed class NotesController(CaselogDbContext dbContext, NoteSearchIndexS
         return Ok(new ApiEnvelope<object>(new { deleted = true }));
     }
 
-    [HttpGet("pages/{id:guid}/notes")]
+    [HttpGet("logs/{id:guid}/notes")]
     public async Task<ActionResult<ApiEnvelope<PagedResult<NoteResponse>>>> GetPageNotes(Guid id, [FromQuery] PaginationQuery query, CancellationToken cancellationToken)
     {
         var userId = GetUserId();
-        var pageExists = await dbContext.Pages.AsNoTracking().AnyAsync(x => x.Id == id && x.UserId == userId, cancellationToken);
+        var pageExists = await dbContext.Logs.AsNoTracking().AnyAsync(x => x.Id == id && x.UserId == userId, cancellationToken);
         if (!pageExists)
         {
-            return NotFoundProblem($"Page '{id}' was not found.");
+            return NotFoundProblem($"Log '{id}' was not found.");
         }
 
-        return await GetAttachedNotesAsync("page", id, userId, query, cancellationToken);
+        return await GetAttachedNotesAsync("log", id, userId, query, cancellationToken);
     }
 
     [HttpGet("entries/{id:guid}/notes")]
@@ -146,7 +146,7 @@ public sealed class NotesController(CaselogDbContext dbContext, NoteSearchIndexS
 
     private async Task<ActionResult<ApiEnvelope<PagedResult<NoteResponse>>>> GetAttachedNotesAsync(string entityType, Guid entityId, Guid userId, PaginationQuery query, CancellationToken cancellationToken)
     {
-        var page = query.NormalizedPage;
+        var log = query.NormalizedPage;
         var pageSize = query.NormalizedPageSize;
 
         var baseQuery = dbContext.Notes.AsNoTracking()
@@ -154,11 +154,11 @@ public sealed class NotesController(CaselogDbContext dbContext, NoteSearchIndexS
             .OrderByDescending(x => x.UpdatedAt);
 
         var totalCount = await baseQuery.CountAsync(cancellationToken);
-        var items = await baseQuery.Skip((page - 1) * pageSize).Take(pageSize)
+        var items = await baseQuery.Skip((log - 1) * pageSize).Take(pageSize)
             .Select(MapToResponse())
             .ToListAsync(cancellationToken);
 
-        return Ok(new ApiEnvelope<PagedResult<NoteResponse>>(new PagedResult<NoteResponse>(items, new PaginationMeta(page, pageSize, totalCount, (int)Math.Ceiling(totalCount / (double)pageSize)))));
+        return Ok(new ApiEnvelope<PagedResult<NoteResponse>>(new PagedResult<NoteResponse>(items, new PaginationMeta(log, pageSize, totalCount, (int)Math.Ceiling(totalCount / (double)pageSize)))));
     }
 
     private async Task<ActionResult?> ValidateAttachmentAsync(string? entityType, Guid? entityId, Guid userId, CancellationToken cancellationToken)
@@ -184,13 +184,13 @@ public sealed class NotesController(CaselogDbContext dbContext, NoteSearchIndexS
 
         var exists = normalizedEntityType switch
         {
-            "page" => await dbContext.Pages.AsNoTracking().AnyAsync(x => x.Id == entityId.Value && x.UserId == userId, cancellationToken),
+            "log" => await dbContext.Logs.AsNoTracking().AnyAsync(x => x.Id == entityId.Value && x.UserId == userId, cancellationToken),
             "listentry" => await dbContext.ListEntries.AsNoTracking().AnyAsync(x => x.Id == entityId.Value && x.UserId == userId, cancellationToken),
             "list" => await dbContext.ListTypes.AsNoTracking().AnyAsync(x => x.Id == entityId.Value && x.UserId == userId, cancellationToken),
             "mindmap" => await dbContext.MindMaps.AsNoTracking().AnyAsync(x => x.Id == entityId.Value && x.UserId == userId, cancellationToken),
             "note" => await dbContext.Notes.AsNoTracking().AnyAsync(x => x.Id == entityId.Value && x.UserId == userId, cancellationToken),
-            "notebook" => await dbContext.Notebooks.AsNoTracking().AnyAsync(x => x.Id == entityId.Value && x.UserId == userId, cancellationToken),
-            "shelf" => await dbContext.Shelves.AsNoTracking().AnyAsync(x => x.Id == entityId.Value && x.UserId == userId, cancellationToken),
+            "kase" => await dbContext.Kases.AsNoTracking().AnyAsync(x => x.Id == entityId.Value && x.UserId == userId, cancellationToken),
+            "" => await dbContext..AsNoTracking().AnyAsync(x => x.Id == entityId.Value && x.UserId == userId, cancellationToken),
             _ => false
         };
 

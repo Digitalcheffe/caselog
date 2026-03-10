@@ -19,9 +19,9 @@ public sealed class TagsController(CaselogDbContext dbContext) : BaseApiControll
         var tags = await dbContext.EntityTags
             .Join(dbContext.Tags, entityTag => entityTag.TagId, tag => tag.Id, (entityTag, tag) => new { entityTag.EntityType, entityTag.EntityId, tag.Name })
             .Where(x =>
-                (x.EntityType == "page" && dbContext.Pages.Any(p => p.Id == x.EntityId && p.UserId == userId))
-                || (x.EntityType == "shelf" && dbContext.Shelves.Any(s => s.Id == x.EntityId && s.UserId == userId))
-                || (x.EntityType == "notebook" && dbContext.Notebooks.Any(n => n.Id == x.EntityId && n.UserId == userId))
+                (x.EntityType == "log" && dbContext.Logs.Any(p => p.Id == x.EntityId && p.UserId == userId))
+                || (x.EntityType == "" && dbContext..Any(s => s.Id == x.EntityId && s.UserId == userId))
+                || (x.EntityType == "kase" && dbContext.Kases.Any(n => n.Id == x.EntityId && n.UserId == userId))
                 || (x.EntityType == "list" && dbContext.ListTypes.Any(l => l.Id == x.EntityId && l.UserId == userId))
                 || (x.EntityType == "listentry" && dbContext.ListEntries.Any(le => le.Id == x.EntityId && le.UserId == userId))
                 || (x.EntityType == "mindmap" && dbContext.MindMaps.Any(m => m.Id == x.EntityId && m.UserId == userId))
@@ -49,9 +49,9 @@ public sealed class TagsController(CaselogDbContext dbContext) : BaseApiControll
             .Where(x => x.Tag.Name == normalizedTagName)
             .Select(x => new TaggedEntityResponse(x.EntityType, x.EntityId))
             .Where(x =>
-                (x.EntityType == "page" && dbContext.Pages.Any(p => p.Id == x.EntityId && p.UserId == userId))
-                || (x.EntityType == "shelf" && dbContext.Shelves.Any(s => s.Id == x.EntityId && s.UserId == userId))
-                || (x.EntityType == "notebook" && dbContext.Notebooks.Any(n => n.Id == x.EntityId && n.UserId == userId))
+                (x.EntityType == "log" && dbContext.Logs.Any(p => p.Id == x.EntityId && p.UserId == userId))
+                || (x.EntityType == "" && dbContext..Any(s => s.Id == x.EntityId && s.UserId == userId))
+                || (x.EntityType == "kase" && dbContext.Kases.Any(n => n.Id == x.EntityId && n.UserId == userId))
                 || (x.EntityType == "list" && dbContext.ListTypes.Any(l => l.Id == x.EntityId && l.UserId == userId))
                 || (x.EntityType == "listentry" && dbContext.ListEntries.Any(le => le.Id == x.EntityId && le.UserId == userId))
                 || (x.EntityType == "mindmap" && dbContext.MindMaps.Any(m => m.Id == x.EntityId && m.UserId == userId))

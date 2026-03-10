@@ -8,14 +8,14 @@ type NavItem = {
 
 const topNavItems: NavItem[] = [
   { path: '/', label: 'Dashboard' },
-  { path: '/shelves', label: 'Shelves' },
+  { path: '/kases', label: 'Kases' },
   { path: '/lists', label: 'Lists' },
   { path: '/mindmaps', label: 'Mind Maps' },
   { path: '/followups', label: 'Follow-ups' }
 ];
 
 const sidebarItems: Array<NavItem & { icon: string; adminOnly?: boolean }> = [
-  { path: '/shelves', label: 'Shelves', icon: '📚' },
+  { path: '/kases', label: 'Kases', icon: '📚' },
   { path: '/lists', label: 'Lists', icon: '📋' },
   { path: '/mindmaps', label: 'Mind Maps', icon: '🧠' },
   { path: '/followups', label: 'Follow-ups', icon: '⏰' },

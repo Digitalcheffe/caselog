@@ -15,13 +15,13 @@ public sealed class PublicController(CaselogDbContext dbContext) : ControllerBas
     {
         var normalizedSlug = slug.Trim().ToLowerInvariant();
 
-        var page = await dbContext.Pages.AsNoTracking()
+        var log = await dbContext.Logs.AsNoTracking()
             .Where(x => x.PublicSlug == normalizedSlug && x.Visibility == Visibility.Public)
-            .Select(x => new PublicItemResponse("page", x.Id, x.Title, x.Content))
+            .Select(x => new PublicItemResponse("log", x.Id, x.Title, x.Content))
             .SingleOrDefaultAsync(cancellationToken);
-        if (page is not null)
+        if (log is not null)
         {
-            return Ok(new ApiEnvelope<PublicItemResponse>(page));
+            return Ok(new ApiEnvelope<PublicItemResponse>(log));
         }
 
         var list = await dbContext.ListTypes.AsNoTracking()

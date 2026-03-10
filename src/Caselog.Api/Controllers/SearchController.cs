@@ -21,7 +21,7 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
     {
         var userId = GetUserId();
         var parsed = ParseQuery(q);
-        var page = pagination.NormalizedPage;
+        var log = pagination.NormalizedPage;
         var pageSize = pagination.NormalizedPageSize;
 
         await using var connection = dbContext.Database.GetDbConnection();
@@ -32,7 +32,7 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
 
         var whereClauses = new List<string>
         {
-            "((si.entity_type = 'page' AND p.UserId = @userId) OR (si.entity_type = 'note' AND n.UserId = @userId) OR (si.entity_type = 'listentry' AND le.UserId = @userId) OR (si.entity_type = 'mindmap' AND mm.UserId = @userId))"
+            "((si.entity_type = 'log' AND p.UserId = @userId) OR (si.entity_type = 'note' AND n.UserId = @userId) OR (si.entity_type = 'listentry' AND le.UserId = @userId) OR (si.entity_type = 'mindmap' AND mm.UserId = @userId))"
         };
 
         var matchQuery = BuildFtsQuery(parsed.Terms);
@@ -61,25 +61,25 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
             whereClauses.Add("COALESCE(p.CreatedAt, n.CreatedAt, le.CreatedAt, mm.CreatedAt) >= @after");
         }
 
-        if (!string.IsNullOrWhiteSpace(parsed.Shelf))
+        if (!string.IsNullOrWhiteSpace(parsed.))
         {
-            whereClauses.Add("si.entity_type = 'page' AND s.Name = @shelf");
+            whereClauses.Add("si.entity_type = 'log' AND s.Name = @");
         }
 
-        if (!string.IsNullOrWhiteSpace(parsed.Notebook))
+        if (!string.IsNullOrWhiteSpace(parsed.Kase))
         {
-            whereClauses.Add("si.entity_type = 'page' AND nb.Name = @notebook");
+            whereClauses.Add("si.entity_type = 'log' AND nb.Name = @kase");
         }
 
         var whereSql = string.Join(" AND ", whereClauses);
-        var offset = (page - 1) * pageSize;
+        var offset = (log - 1) * pageSize;
 
         var countSql = $"""
             SELECT COUNT(*)
             FROM search_index si
-            LEFT JOIN Pages p ON si.entity_type = 'page' AND p.Id = si.entity_id
-            LEFT JOIN Notebooks nb ON p.NotebookId = nb.Id
-            LEFT JOIN Shelves s ON nb.ShelfId = s.Id
+            LEFT JOIN Logs p ON si.entity_type = 'log' AND p.Id = si.entity_id
+            LEFT JOIN Kases nb ON p.NotebookId = nb.Id
+            LEFT JOIN  s ON nb.ShelfId = s.Id
             LEFT JOIN Notes n ON si.entity_type = 'note' AND n.Id = si.entity_id
             LEFT JOIN ListEntries le ON si.entity_type = 'listentry' AND le.Id = si.entity_id
             LEFT JOIN MindMaps mm ON si.entity_type = 'mindmap' AND mm.Id = si.entity_id
@@ -103,7 +103,7 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
                 COALESCE(snippet(search_index, 3, '<mark>', '</mark>', ' … ', 24), substr(COALESCE(si.content, ''), 1, 240)) AS snippet,
                 COALESCE(si.tags, '') AS tags,
                 CASE
-                    WHEN si.entity_type = 'page' THEN
+                    WHEN si.entity_type = 'log' THEN
                         CASE
                             WHEN s.Name IS NOT NULL AND nb.Name IS NOT NULL THEN s.Name || ' / ' || nb.Name
                             WHEN nb.Name IS NOT NULL THEN nb.Name
@@ -117,9 +117,9 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
                 COALESCE(p.CreatedAt, n.CreatedAt, le.CreatedAt, mm.CreatedAt) AS created_at,
                 bm25(search_index, 0.0, 0.0, 12.0, 1.0, 8.0, 4.0) AS rank
             FROM search_index si
-            LEFT JOIN Pages p ON si.entity_type = 'page' AND p.Id = si.entity_id
-            LEFT JOIN Notebooks nb ON p.NotebookId = nb.Id
-            LEFT JOIN Shelves s ON nb.ShelfId = s.Id
+            LEFT JOIN Logs p ON si.entity_type = 'log' AND p.Id = si.entity_id
+            LEFT JOIN Kases nb ON p.NotebookId = nb.Id
+            LEFT JOIN  s ON nb.ShelfId = s.Id
             LEFT JOIN Notes n ON si.entity_type = 'note' AND n.Id = si.entity_id
             LEFT JOIN ListEntries le ON si.entity_type = 'listentry' AND le.Id = si.entity_id
             LEFT JOIN ListTypes lt ON le.ListTypeId = lt.Id
@@ -132,7 +132,7 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
         var items = await ExecuteItemsAsync(connection, sql, parsed, userId, matchQuery, pageSize, offset, cancellationToken);
         var totalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize);
 
-        return Ok(new ApiEnvelope<SearchResponse>(new SearchResponse(items, new PaginationMeta(page, pageSize, totalCount, totalPages), BuildParsedQueryEcho(parsed))));
+        return Ok(new ApiEnvelope<SearchResponse>(new SearchResponse(items, new PaginationMeta(log, pageSize, totalCount, totalPages), BuildParsedQueryEcho(parsed))));
     }
 
     private static async Task<int> ExecuteCountAsync(DbConnection connection, string sql, ParsedSearchQuery parsed, Guid userId, string? matchQuery, CancellationToken cancellationToken)
@@ -177,8 +177,8 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
         if (!string.IsNullOrWhiteSpace(parsed.Tag)) AddParameter(command, "@tag", parsed.Tag!);
         if (!string.IsNullOrWhiteSpace(parsed.Source)) AddParameter(command, "@sourceTag", $"source:{parsed.Source}");
         if (parsed.After is not null) AddParameter(command, "@after", parsed.After.Value.UtcDateTime);
-        if (!string.IsNullOrWhiteSpace(parsed.Shelf)) AddParameter(command, "@shelf", parsed.Shelf!);
-        if (!string.IsNullOrWhiteSpace(parsed.Notebook)) AddParameter(command, "@notebook", parsed.Notebook!);
+        if (!string.IsNullOrWhiteSpace(parsed.)) AddParameter(command, "@", parsed.!);
+        if (!string.IsNullOrWhiteSpace(parsed.Kase)) AddParameter(command, "@kase", parsed.Kase!);
         if (limit.HasValue) AddParameter(command, "@limit", limit.Value);
         if (offset.HasValue) AddParameter(command, "@offset", offset.Value);
 
@@ -207,8 +207,8 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
     {
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(parsed.Tag)) parts.Add($"tag:{parsed.Tag}");
-        if (!string.IsNullOrWhiteSpace(parsed.Shelf)) parts.Add($"shelf:{parsed.Shelf}");
-        if (!string.IsNullOrWhiteSpace(parsed.Notebook)) parts.Add($"notebook:{parsed.Notebook}");
+        if (!string.IsNullOrWhiteSpace(parsed.)) parts.Add($":{parsed.}");
+        if (!string.IsNullOrWhiteSpace(parsed.Kase)) parts.Add($"kase:{parsed.Kase}");
         if (!string.IsNullOrWhiteSpace(parsed.Source)) parts.Add($"source:{parsed.Source}");
         if (parsed.After is not null) parts.Add($"after:{parsed.After:yyyy-MM-dd}");
         if (!string.IsNullOrWhiteSpace(parsed.Type)) parts.Add($"type:{parsed.Type}");
@@ -256,11 +256,11 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
                 case "tag":
                     parsed.Tag = value.ToLowerInvariant();
                     break;
-                case "shelf":
-                    parsed.Shelf = value;
+                case "":
+                    parsed. = value;
                     break;
-                case "notebook":
-                    parsed.Notebook = value;
+                case "kase":
+                    parsed.Kase = value;
                     break;
                 case "source":
                     parsed.Source = value.ToLowerInvariant();
@@ -296,8 +296,8 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
     private sealed class ParsedSearchQuery
     {
         public string? Tag { get; set; }
-        public string? Shelf { get; set; }
-        public string? Notebook { get; set; }
+        public string?  { get; set; }
+        public string? Kase { get; set; }
         public string? Source { get; set; }
         public DateTimeOffset? After { get; set; }
         public string? Type { get; set; }
