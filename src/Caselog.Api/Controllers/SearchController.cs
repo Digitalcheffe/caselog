@@ -61,11 +61,6 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
             whereClauses.Add("COALESCE(p.CreatedAt, n.CreatedAt, le.CreatedAt, mm.CreatedAt) >= @after");
         }
 
-        if (!string.IsNullOrWhiteSpace(parsed.))
-        {
-            whereClauses.Add("si.entity_type = 'log' AND s.Name = @");
-        }
-
         if (!string.IsNullOrWhiteSpace(parsed.Kase))
         {
             whereClauses.Add("si.entity_type = 'log' AND nb.Name = @kase");
@@ -78,8 +73,7 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
             SELECT COUNT(*)
             FROM search_index si
             LEFT JOIN Logs p ON si.entity_type = 'log' AND p.Id = si.entity_id
-            LEFT JOIN Kases nb ON p.NotebookId = nb.Id
-            LEFT JOIN  s ON nb.ShelfId = s.Id
+            LEFT JOIN Kases nb ON p.KaseId = nb.Id
             LEFT JOIN Notes n ON si.entity_type = 'note' AND n.Id = si.entity_id
             LEFT JOIN ListEntries le ON si.entity_type = 'listentry' AND le.Id = si.entity_id
             LEFT JOIN MindMaps mm ON si.entity_type = 'mindmap' AND mm.Id = si.entity_id
@@ -105,9 +99,8 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
                 CASE
                     WHEN si.entity_type = 'log' THEN
                         CASE
-                            WHEN s.Name IS NOT NULL AND nb.Name IS NOT NULL THEN s.Name || ' / ' || nb.Name
                             WHEN nb.Name IS NOT NULL THEN nb.Name
-                            ELSE 'Unorganized'
+                            ELSE 'Loose End'
                         END
                     WHEN si.entity_type = 'listentry' THEN COALESCE(lt.Name, 'List Entry')
                     WHEN si.entity_type = 'mindmap' THEN 'Mind maps'
@@ -118,8 +111,7 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
                 bm25(search_index, 0.0, 0.0, 12.0, 1.0, 8.0, 4.0) AS rank
             FROM search_index si
             LEFT JOIN Logs p ON si.entity_type = 'log' AND p.Id = si.entity_id
-            LEFT JOIN Kases nb ON p.NotebookId = nb.Id
-            LEFT JOIN  s ON nb.ShelfId = s.Id
+            LEFT JOIN Kases nb ON p.KaseId = nb.Id
             LEFT JOIN Notes n ON si.entity_type = 'note' AND n.Id = si.entity_id
             LEFT JOIN ListEntries le ON si.entity_type = 'listentry' AND le.Id = si.entity_id
             LEFT JOIN ListTypes lt ON le.ListTypeId = lt.Id
@@ -177,7 +169,6 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
         if (!string.IsNullOrWhiteSpace(parsed.Tag)) AddParameter(command, "@tag", parsed.Tag!);
         if (!string.IsNullOrWhiteSpace(parsed.Source)) AddParameter(command, "@sourceTag", $"source:{parsed.Source}");
         if (parsed.After is not null) AddParameter(command, "@after", parsed.After.Value.UtcDateTime);
-        if (!string.IsNullOrWhiteSpace(parsed.)) AddParameter(command, "@", parsed.!);
         if (!string.IsNullOrWhiteSpace(parsed.Kase)) AddParameter(command, "@kase", parsed.Kase!);
         if (limit.HasValue) AddParameter(command, "@limit", limit.Value);
         if (offset.HasValue) AddParameter(command, "@offset", offset.Value);
@@ -207,7 +198,6 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
     {
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(parsed.Tag)) parts.Add($"tag:{parsed.Tag}");
-        if (!string.IsNullOrWhiteSpace(parsed.)) parts.Add($":{parsed.}");
         if (!string.IsNullOrWhiteSpace(parsed.Kase)) parts.Add($"kase:{parsed.Kase}");
         if (!string.IsNullOrWhiteSpace(parsed.Source)) parts.Add($"source:{parsed.Source}");
         if (parsed.After is not null) parts.Add($"after:{parsed.After:yyyy-MM-dd}");
@@ -256,9 +246,6 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
                 case "tag":
                     parsed.Tag = value.ToLowerInvariant();
                     break;
-                case "":
-                    parsed. = value;
-                    break;
                 case "kase":
                     parsed.Kase = value;
                     break;
@@ -296,7 +283,6 @@ public sealed partial class SearchController(CaselogDbContext dbContext) : BaseA
     private sealed class ParsedSearchQuery
     {
         public string? Tag { get; set; }
-        public string?  { get; set; }
         public string? Kase { get; set; }
         public string? Source { get; set; }
         public DateTimeOffset? After { get; set; }
