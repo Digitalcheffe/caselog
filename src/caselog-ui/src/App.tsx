@@ -44,10 +44,10 @@ import {
   type ListFieldType,
   type ListType,
   type ListTypeField,
-  type Notebook,
-  type Page,
+  type Kase,
+  type Log,
   type ProfileResponse,
-  type Shelf,
+  type Kase,
   toggleAdminUserStatus,
   updateAdminUser,
   updateEntry,
@@ -84,10 +84,10 @@ import { MindMapEditorPage, MindMapsIndexPage } from "./components/mindmaps";
 const routes = [
   "/",
   "/dashboard",
-  "/shelves",
-  "/shelves/:id",
-  "/notebooks/:id",
-  "/pages/:id",
+  "/kases",
+  "/kases/:id",
+  "/kases/:id",
+  "/logs/:id",
   "/search",
   "/lists",
   "/lists/:id",
@@ -111,9 +111,9 @@ const AppInner = () => {
     new URLSearchParams(window.location.search).get("q") ?? "",
   );
   const [debouncedSearch, setDebouncedSearch] = useState(search);
-  const [pages, setPages] = useState<Page[]>([]);
-  const [shelves, setShelves] = useState<(Shelf & { notebookCount?: number })[]>([]);
-  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [logs, setPages] = useState<Log[]>([]);
+  const [kases, setShelves] = useState<(Kase & { notebookCount?: number })[]>([]);
+  const [kases, setNotebooks] = useState<Kase[]>([]);
   const [lists, setLists] = useState<ListType[]>([]);
   const [listFields, setListFields] = useState<ListTypeField[]>([]);
   const [listEntries, setListEntries] = useState<ListEntry[]>([]);
@@ -175,7 +175,7 @@ const AppInner = () => {
   }, [isAuthenticated]);
 
   useEffect(() => {
-    if (currentRoute !== "/shelves/:id" || !params.id) return;
+    if (currentRoute !== "/kases/:id" || !params.id) return;
 
     const loadNotebooks = async () => {
       try {
@@ -190,7 +190,7 @@ const AppInner = () => {
   }, [currentRoute, params.id]);
 
   useEffect(() => {
-    if (currentRoute !== "/notebooks/:id" || !params.id) return;
+    if (currentRoute !== "/kases/:id" || !params.id) return;
 
     const loadPages = async () => {
       try {
@@ -247,7 +247,7 @@ const AppInner = () => {
 
   const addQuickCapture = (content: string) => {
     const now = new Date().toISOString();
-    const nextItem: Page = {
+    const nextItem: Log = {
       id: crypto.randomUUID(),
       title: "Quick note",
       content,
@@ -258,7 +258,7 @@ const AppInner = () => {
       createdAt: now,
       updatedAt: now,
     };
-    const next = [...pages, nextItem];
+    const next = [...logs, nextItem];
     setPages(next);
     setToast("Quick capture saved");
   };
@@ -277,45 +277,45 @@ const AppInner = () => {
     case "/dashboard":
       content = <Dashboard onQuickCapture={addQuickCapture} />;
       break;
-    case "/shelves":
+    case "/kases":
       content = (
         <ShelvesPage
-          shelves={shelves}
-          notebooks={notebooks}
+          kases={kases}
+          kases={kases}
           navigate={navigate}
           onShelvesChange={setShelves}
           onToast={setToast}
         />
       );
       break;
-    case "/shelves/:id": {
-      const shelf = shelves.find((item) => item.id === params.id);
-      const shelfNotebooks = notebooks.filter((item) => item.shelfId === params.id);
-      content = shelf ? (
+    case "/kases/:id": {
+      const kase = kases.find((item) => item.id === params.id);
+      const shelfNotebooks = kases.filter((item) => item.shelfId === params.id);
+      content = kase ? (
         <ShelfDetailPage
-          shelf={shelf}
-          notebooks={shelfNotebooks}
-          pages={pages}
+          kase={kase}
+          kases={shelfNotebooks}
+          logs={logs}
           navigate={navigate}
-          onNotebookCreated={(notebook) =>
-            setNotebooks((previous) => [...previous.filter((item) => item.id !== notebook.id), notebook])
+          onNotebookCreated={(kase) =>
+            setNotebooks((previous) => [...previous.filter((item) => item.id !== kase.id), kase])
           }
           onToast={setToast}
         />
       ) : (
-        <EmptyState title="Shelf missing" body="Not found." />
+        <EmptyState title="Kase missing" body="Not found." />
       );
       break;
     }
-    case "/notebooks/:id": {
-      const notebook = notebooks.find((item) => item.id === params.id);
-      const notebookPages = pages.filter((page) => page.notebookId === params.id);
-      const shelf = shelves.find((item) => item.id === notebook?.shelfId);
-      content = notebook ? (
+    case "/kases/:id": {
+      const kase = kases.find((item) => item.id === params.id);
+      const notebookPages = logs.filter((page) => page.notebookId === params.id);
+      const kase = kases.find((item) => item.id === kase?.shelfId);
+      content = kase ? (
         <NotebookDetailPage
-          notebook={notebook}
-          shelf={shelf}
-          pages={notebookPages}
+          kase={kase}
+          kase={kase}
+          logs={notebookPages}
           navigate={navigate}
           onPageCreated={(page) =>
             setPages((previous) => [...previous.filter((item) => item.id !== page.id), page])
@@ -323,22 +323,22 @@ const AppInner = () => {
           onToast={setToast}
         />
       ) : (
-        <EmptyState title="Notebook missing" body="Not found." />
+        <EmptyState title="Kase missing" body="Not found." />
       );
       break;
     }
-    case "/pages/:id": {
-      const page = pages.find((p) => p.id === params.id);
+    case "/logs/:id": {
+      const page = logs.find((p) => p.id === params.id);
       content = page ? (
         <PageEditor
           page={page}
-          pages={pages}
+          logs={logs}
           setPages={setPages}
           navigate={navigate}
           onToast={setToast}
         />
       ) : (
-        <EmptyState title="Page missing" body="Not found." />
+        <EmptyState title="Log missing" body="Not found." />
       );
       break;
     }
@@ -359,7 +359,7 @@ const AppInner = () => {
           list={list}
           fields={listFields}
           entries={listEntries}
-          pages={pages}
+          logs={logs}
           onListChange={(nextList) =>
             setLists((previous) =>
               previous.map((item) => (item.id === nextList.id ? nextList : item)),
@@ -390,7 +390,7 @@ const AppInner = () => {
       content = (
         <div>
           <PageHeader title="Unorganized" />
-          {pages
+          {logs
             .filter((p) => !p.notebookId)
             .map((p) => (
               <Card key={p.id}>{p.title}</Card>
@@ -501,7 +501,7 @@ const Dashboard = ({
 }: {
   onQuickCapture: (value: string) => void;
 }) => {
-  const [recentPages, setRecentPages] = useState<Page[]>([]);
+  const [recentPages, setRecentPages] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [quickCaptureDraft, setQuickCaptureDraft] = useState("");
@@ -559,7 +559,7 @@ const Dashboard = ({
 };
 
 const FollowUps = () => {
-  const [open, setOpen] = useState<Page[]>([]);
+  const [open, setOpen] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -595,7 +595,7 @@ const FollowUps = () => {
 };
 
 const SearchPage = ({ query }: { query: string }) => {
-  const [results, setResults] = useState<Page[]>([]);
+  const [results, setResults] = useState<Log[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -622,7 +622,7 @@ const SearchPage = ({ query }: { query: string }) => {
         <CardGrid>
           {results.map((r) => (
             <Card key={r.id}>
-              <MetadataLine>{r.notebookId ? "notebook" : "unorganized"}</MetadataLine>
+              <MetadataLine>{r.notebookId ? "kase" : "unorganized"}</MetadataLine>
               <h3>{r.title}</h3>
               <p>{r.content.slice(0, 90)}</p>
               <TagList tags={r.tags} />
@@ -728,7 +728,7 @@ const ListDetailPage = ({
   list,
   fields,
   entries,
-  pages,
+  logs,
   onListChange,
   onFieldsChange,
   onEntriesChange,
@@ -737,7 +737,7 @@ const ListDetailPage = ({
   list: ListType;
   fields: ListTypeField[];
   entries: ListEntry[];
-  pages: Page[];
+  logs: Log[];
   onListChange: (value: ListType) => void;
   onFieldsChange: (value: ListTypeField[]) => void;
   onEntriesChange: (value: ListEntry[]) => void;
@@ -836,13 +836,13 @@ const ListDetailPage = ({
     }
   };
 
-  const matchingPages = pages.filter((page) => page.title.toLowerCase().includes(pageSearch.toLowerCase()));
+  const matchingPages = logs.filter((page) => page.title.toLowerCase().includes(pageSearch.toLowerCase()));
 
   return (
     <div>
       <PageHeader
         title={list.name}
-        actions={<div className="row"><Button variant="secondary" onClick={() => setAttachOpen(true)}>Attach to Page</Button><Button onClick={() => void addEntry()}>New Entry</Button></div>}
+        actions={<div className="row"><Button variant="secondary" onClick={() => setAttachOpen(true)}>Attach to Log</Button><Button onClick={() => void addEntry()}>New Entry</Button></div>}
       />
       <Input value={draftName} onChange={(event) => setDraftName(event.target.value)} onBlur={() => void saveName()} onKeyDown={(event) => event.key === "Enter" && void saveName()} />
       <div className="list-detail-layout">
@@ -961,8 +961,8 @@ const ListDetailPage = ({
       {attachOpen ? (
         <div className="dialog-backdrop">
           <Card className="modal-card">
-            <h3>Attach to Page</h3>
-            <Input placeholder="Search pages" value={pageSearch} onChange={(event) => setPageSearch(event.target.value)} />
+            <h3>Attach to Log</h3>
+            <Input placeholder="Search logs" value={pageSearch} onChange={(event) => setPageSearch(event.target.value)} />
             <div className="attach-page-results">
               {matchingPages.map((page) => (
                 <div key={page.id} className="row">
@@ -1065,44 +1065,44 @@ const CellEditor = ({
   );
 };
 const ShelvesPage = ({
-  shelves,
-  notebooks,
+  kases,
+  kases,
   navigate,
   onShelvesChange,
   onToast,
 }: {
-  shelves: (Shelf & { notebookCount?: number })[];
-  notebooks: Notebook[];
+  kases: (Kase & { notebookCount?: number })[];
+  kases: Kase[];
   navigate: (path: string) => void;
-  onShelvesChange: (value: (Shelf & { notebookCount?: number })[]) => void;
+  onShelvesChange: (value: (Kase & { notebookCount?: number })[]) => void;
   onToast: (message: string) => void;
 }) => {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
 
   const createNewShelf = async () => {
-    const shelfName = name.trim() || "Untitled Shelf";
+    const shelfName = name.trim() || "Untitled Kase";
     const shelfDescription = description.trim();
 
     try {
       const created = await createShelf({ name: shelfName, description: shelfDescription });
-      onShelvesChange([...shelves, { ...created, notebookCount: 0 }]);
+      onShelvesChange([...kases, { ...created, notebookCount: 0 }]);
       setName("");
       setDescription("");
-      onToast("Shelf created");
+      onToast("Kase created");
     } catch {
-      onToast("Failed to create shelf");
+      onToast("Failed to create kase");
     }
   };
 
   return (
     <div>
       <PageHeader
-        title="Shelves"
+        title="Kases"
         actions={
           <div className="row">
             <Input
-              placeholder="Shelf name"
+              placeholder="Kase name"
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
@@ -1111,19 +1111,19 @@ const ShelvesPage = ({
               value={description}
               onChange={(event) => setDescription(event.target.value)}
             />
-            <Button onClick={() => void createNewShelf()}>New Shelf</Button>
+            <Button onClick={() => void createNewShelf()}>New Kase</Button>
           </div>
         }
       />
       <CardGrid>
-        {shelves.map((shelf) => (
-          <Card key={shelf.id}>
-            <h3>{shelf.name}</h3>
-            <p>{shelf.description || "No description"}</p>
+        {kases.map((kase) => (
+          <Card key={kase.id}>
+            <h3>{kase.name}</h3>
+            <p>{kase.description || "No description"}</p>
             <MetadataLine>
-              {(shelf.notebookCount ?? notebooks.filter((item) => item.shelfId === shelf.id).length).toString()} notebooks
+              {(kase.notebookCount ?? kases.filter((item) => item.shelfId === kase.id).length).toString()} kases
             </MetadataLine>
-            <Button onClick={() => navigate(`/shelves/${shelf.id}`)}>Open</Button>
+            <Button onClick={() => navigate(`/kases/${kase.id}`)}>Open</Button>
           </Card>
         ))}
       </CardGrid>
@@ -1132,49 +1132,49 @@ const ShelvesPage = ({
 };
 
 const ShelfDetailPage = ({
-  shelf,
-  notebooks,
-  pages,
+  kase,
+  kases,
+  logs,
   navigate,
   onNotebookCreated,
   onToast,
 }: {
-  shelf: Shelf;
-  notebooks: Notebook[];
-  pages: Page[];
+  kase: Kase;
+  kases: Kase[];
+  logs: Log[];
   navigate: (path: string) => void;
-  onNotebookCreated: (notebook: Notebook) => void;
+  onNotebookCreated: (kase: Kase) => void;
   onToast: (message: string) => void;
 }) => {
   const createNewNotebook = async () => {
     try {
-      const created = await createShelfNotebook(shelf.id, { name: "Untitled" });
+      const created = await createShelfNotebook(kase.id, { name: "Untitled" });
       onNotebookCreated(created);
-      onToast("Notebook created");
+      onToast("Kase created");
     } catch {
-      onToast("Failed to create notebook");
+      onToast("Failed to create kase");
     }
   };
 
   return (
     <div>
       <PageHeader
-        title={shelf.name}
-        subtitle={shelf.description}
-        actions={<Button onClick={() => void createNewNotebook()}>New Notebook</Button>}
+        title={kase.name}
+        subtitle={kase.description}
+        actions={<Button onClick={() => void createNewNotebook()}>New Kase</Button>}
       />
       <CardGrid>
-        {notebooks.map((notebook) => {
-          const pageCount = notebook.pageCount ?? pages.filter((page) => page.notebookId === notebook.id).length;
+        {kases.map((kase) => {
+          const pageCount = kase.pageCount ?? logs.filter((page) => page.notebookId === kase.id).length;
           return (
-            <Card key={notebook.id}>
-              <h3>{notebook.name}</h3>
-              <p>{notebook.description || "No description"}</p>
-              <MetadataLine>Notebook</MetadataLine>
+            <Card key={kase.id}>
+              <h3>{kase.name}</h3>
+              <p>{kase.description || "No description"}</p>
+              <MetadataLine>Kase</MetadataLine>
               <div className="row">
-                <Badge>{pageCount} pages</Badge>
+                <Badge>{pageCount} logs</Badge>
               </div>
-              <Button onClick={() => navigate(`/notebooks/${notebook.id}`)}>Open</Button>
+              <Button onClick={() => navigate(`/kases/${kase.id}`)}>Open</Button>
             </Card>
           );
         })}
@@ -1184,25 +1184,25 @@ const ShelfDetailPage = ({
 };
 
 const NotebookDetailPage = ({
-  notebook,
-  shelf,
-  pages,
+  kase,
+  kase,
+  logs,
   navigate,
   onPageCreated,
   onToast,
 }: {
-  notebook: Notebook;
-  shelf?: Shelf & { notebookCount?: number };
-  pages: Page[];
+  kase: Kase;
+  kase?: Kase & { notebookCount?: number };
+  logs: Log[];
   navigate: (path: string) => void;
-  onPageCreated: (page: Page) => void;
+  onPageCreated: (page: Log) => void;
   onToast: (message: string) => void;
 }) => {
   const createNewPage = async () => {
     try {
-      const created = await createNotebookPage(notebook.id, { title: "Untitled" });
+      const created = await createNotebookPage(kase.id, { title: "Untitled" });
       onPageCreated(created);
-      navigate(`/pages/${created.id}`);
+      navigate(`/logs/${created.id}`);
     } catch {
       onToast("Failed to create page");
     }
@@ -1211,39 +1211,39 @@ const NotebookDetailPage = ({
   return (
     <div>
       <MetadataLine>
-        {shelf ? (
-          <button className="inline-link" type="button" onClick={() => navigate(`/shelves/${shelf.id}`)}>
-            {shelf.name}
+        {kase ? (
+          <button className="inline-link" type="button" onClick={() => navigate(`/kases/${kase.id}`)}>
+            {kase.name}
           </button>
         ) : (
-          "Shelf"
+          "Kase"
         )}{" "}
         &gt;
-        <button className="inline-link" type="button" onClick={() => navigate(`/notebooks/${notebook.id}`)}>
-          {notebook.name}
+        <button className="inline-link" type="button" onClick={() => navigate(`/kases/${kase.id}`)}>
+          {kase.name}
         </button>
       </MetadataLine>
       <PageHeader
-        title={notebook.name}
-        actions={<Button onClick={() => void createNewPage()}>New Page</Button>}
+        title={kase.name}
+        actions={<Button onClick={() => void createNewPage()}>New Log</Button>}
       />
-      {pages.length === 0 ? (
+      {logs.length === 0 ? (
         <Card className="empty-state-card">
           <div className="empty-state-icon" aria-hidden>📄</div>
-          <h3>No pages yet</h3>
+          <h3>No logs yet</h3>
           <p className="muted">Create your first page</p>
           <Button onClick={() => void createNewPage()}>Create your first page</Button>
         </Card>
       ) : (
         <CardGrid>
-          {pages.map((page) => {
+          {logs.map((page) => {
             const overflow = Math.max(page.tags.length - 3, 0);
             return (
               <Card key={page.id}>
                 <button
                   type="button"
                   className="card-link-title"
-                  onClick={() => navigate(`/pages/${page.id}`)}
+                  onClick={() => navigate(`/logs/${page.id}`)}
                 >
                   <h3>{page.title}</h3>
                 </button>
@@ -1273,14 +1273,14 @@ const formatDate = (isoDate: string) => new Date(isoDate).toLocaleString();
 
 const PageEditor = ({
   page,
-  pages,
+  logs,
   setPages,
   navigate,
   onToast,
 }: {
-  page: Page;
-  pages: Page[];
-  setPages: (v: Page[]) => void;
+  page: Log;
+  logs: Log[];
+  setPages: (v: Log[]) => void;
   navigate: (path: string) => void;
   onToast: (message: string) => void;
 }) => {
@@ -1310,13 +1310,13 @@ const PageEditor = ({
     return () => window.clearTimeout(id);
   }, [visibilitySaved]);
 
-  const savePageAndStore = (nextDraft: Page) => {
-    const nextPages = pages.map((p) => (p.id === nextDraft.id ? nextDraft : p));
+  const savePageAndStore = (nextDraft: Log) => {
+    const nextPages = logs.map((p) => (p.id === nextDraft.id ? nextDraft : p));
     setPages(nextPages);
     setLastSavedDraft(nextDraft);
   };
 
-  const persistDraft = async (nextDraft: Page) => {
+  const persistDraft = async (nextDraft: Log) => {
     setSaveState("saving");
     try {
       await updatePage(nextDraft.id, { content: nextDraft.content });
@@ -1335,7 +1335,7 @@ const PageEditor = ({
     return () => window.clearTimeout(id);
   }, [draft.content, draft, lastSavedDraft.content]);
 
-  const saveSingleField = async (changes: Partial<Page>) => {
+  const saveSingleField = async (changes: Partial<Log>) => {
     const nextDraft = {
       ...draft,
       ...changes,
@@ -1388,7 +1388,7 @@ const PageEditor = ({
     }
   };
 
-  const handleVisibilityChange = async (nextVisibility: Page["visibility"]) => {
+  const handleVisibilityChange = async (nextVisibility: Log["visibility"]) => {
     const saved = await saveSingleField({ visibility: nextVisibility });
     if (saved) setVisibilitySaved(true);
   };
@@ -1435,11 +1435,11 @@ const PageEditor = ({
   const confirmDelete = async () => {
     try {
       await deletePage(draft.id);
-      const nextPages = pages.filter((p) => p.id !== draft.id);
+      const nextPages = logs.filter((p) => p.id !== draft.id);
       setPages(nextPages);
       setConfirmDeleteOpen(false);
       navigate(
-        draft.notebookId ? `/notebooks/${draft.notebookId}` : "/unorganized",
+        draft.notebookId ? `/kases/${draft.notebookId}` : "/unorganized",
       );
     } catch {
       onToast("Delete failed");
@@ -1455,7 +1455,7 @@ const PageEditor = ({
 
   return (
     <div>
-      <MetadataLine>Home / Notebook / {page.title}</MetadataLine>
+      <MetadataLine>Home / Kase / {page.title}</MetadataLine>
       <PageHeader
         title={page.title}
         actions={
@@ -1694,7 +1694,7 @@ const PageEditor = ({
                 value={draft.visibility}
                 onChange={(e) =>
                   void handleVisibilityChange(
-                    e.target.value as Page["visibility"],
+                    e.target.value as Log["visibility"],
                   )
                 }
               >

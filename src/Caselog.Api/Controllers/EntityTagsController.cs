@@ -9,7 +9,7 @@ namespace Caselog.Api.Controllers;
 
 [Authorize]
 [Route("api/{entityType}/{id:guid}/tags")]
-public sealed class EntityTagsController(CaselogDbContext dbContext, TaggingService taggingService, PageSearchIndexService pageSearchIndexService, MindMapSearchIndexService mindMapSearchIndexService) : BaseApiController
+public sealed class EntityTagsController(CaselogDbContext dbContext, TaggingService taggingService, LogSearchIndexService pageSearchIndexService, MindMapSearchIndexService mindMapSearchIndexService) : BaseApiController
 {
     [HttpPost]
     public async Task<ActionResult<ApiEnvelope<IReadOnlyList<string>>>> AddTags(string entityType, Guid id, [FromBody] TagRequest request, CancellationToken cancellationToken)
@@ -58,12 +58,12 @@ public sealed class EntityTagsController(CaselogDbContext dbContext, TaggingServ
 
     private async Task UpdateSearchIndexIfNeededAsync(string entityType, Guid id, CancellationToken cancellationToken)
     {
-        if (entityType == "page")
+        if (entityType == "log")
         {
-            var page = await dbContext.Pages.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-            if (page is not null)
+            var log = await dbContext.Logs.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+            if (log is not null)
             {
-                await pageSearchIndexService.UpsertAsync(page, cancellationToken);
+                await pageSearchIndexService.UpsertAsync(log, cancellationToken);
             }
 
             return;

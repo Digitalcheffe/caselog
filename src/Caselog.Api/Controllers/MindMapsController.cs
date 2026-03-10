@@ -16,18 +16,18 @@ public sealed class MindMapsController(CaselogDbContext dbContext, TaggingServic
     public async Task<ActionResult<ApiEnvelope<PagedResult<MindMapResponse>>>> GetMindMaps([FromQuery] PaginationQuery query, CancellationToken cancellationToken)
     {
         var userId = GetUserId();
-        var page = query.NormalizedPage;
+        var log = query.NormalizedPage;
         var pageSize = query.NormalizedPageSize;
 
         var baseQuery = dbContext.MindMaps.AsNoTracking().Where(x => x.UserId == userId).OrderByDescending(x => x.UpdatedAt);
         var totalCount = await baseQuery.CountAsync(cancellationToken);
         var items = await baseQuery
-            .Skip((page - 1) * pageSize)
+            .Skip((log - 1) * pageSize)
             .Take(pageSize)
             .Select(x => new MindMapResponse(x.Id, x.Title, x.Visibility, x.PublicSlug, x.CreatedAt, x.UpdatedAt))
             .ToListAsync(cancellationToken);
 
-        return Ok(new ApiEnvelope<PagedResult<MindMapResponse>>(new PagedResult<MindMapResponse>(items, new PaginationMeta(page, pageSize, totalCount, (int)Math.Ceiling(totalCount / (double)pageSize)))));
+        return Ok(new ApiEnvelope<PagedResult<MindMapResponse>>(new PagedResult<MindMapResponse>(items, new PaginationMeta(log, pageSize, totalCount, (int)Math.Ceiling(totalCount / (double)pageSize)))));
     }
 
     [HttpGet("{id:guid}")]

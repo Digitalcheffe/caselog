@@ -33,7 +33,7 @@ public sealed class PublishingController(CaselogDbContext dbContext) : BaseApiCo
 
         return normalizedType switch
         {
-            "pages" or "page" => await UpdatePageAsync(id, userId, request.Visibility, slug, cancellationToken),
+            "logs" or "log" => await UpdatePageAsync(id, userId, request.Visibility, slug, cancellationToken),
             "lists" or "list" => await UpdateListAsync(id, userId, request.Visibility, slug, cancellationToken),
             "notes" or "note" => await UpdateNoteAsync(id, userId, request.Visibility, slug, cancellationToken),
             "mindmaps" or "mindmap" => await UpdateMindMapAsync(id, userId, request.Visibility, slug, cancellationToken),
@@ -52,7 +52,7 @@ public sealed class PublishingController(CaselogDbContext dbContext) : BaseApiCo
             throw new BadHttpRequestException("Public slug must be URL-safe lowercase letters, numbers, and hyphens.");
         }
 
-        var exists = await dbContext.Pages.AnyAsync(x => x.PublicSlug == slug && x.Id != entityId, cancellationToken)
+        var exists = await dbContext.Logs.AnyAsync(x => x.PublicSlug == slug && x.Id != entityId, cancellationToken)
             || await dbContext.ListTypes.AnyAsync(x => x.PublicSlug == slug && x.Id != entityId, cancellationToken)
             || await dbContext.Notes.AnyAsync(x => x.PublicSlug == slug && x.Id != entityId, cancellationToken)
             || await dbContext.MindMaps.AnyAsync(x => x.PublicSlug == slug && x.Id != entityId, cancellationToken);
@@ -69,7 +69,7 @@ public sealed class PublishingController(CaselogDbContext dbContext) : BaseApiCo
     {
         var source = type switch
         {
-            "pages" or "page" => await dbContext.Pages.Where(x => x.Id == entityId).Select(x => x.Title).SingleOrDefaultAsync(cancellationToken),
+            "logs" or "log" => await dbContext.Logs.Where(x => x.Id == entityId).Select(x => x.Title).SingleOrDefaultAsync(cancellationToken),
             "lists" or "list" => await dbContext.ListTypes.Where(x => x.Id == entityId).Select(x => x.Name).SingleOrDefaultAsync(cancellationToken),
             "notes" or "note" => await dbContext.Notes.Where(x => x.Id == entityId).Select(x => x.Content).SingleOrDefaultAsync(cancellationToken),
             "mindmaps" or "mindmap" => await dbContext.MindMaps.Where(x => x.Id == entityId).Select(x => x.Title).SingleOrDefaultAsync(cancellationToken),
@@ -87,12 +87,12 @@ public sealed class PublishingController(CaselogDbContext dbContext) : BaseApiCo
 
     private async Task<ActionResult<ApiEnvelope<PublishResponse>>> UpdatePageAsync(Guid id, Guid userId, Visibility visibility, string? slug, CancellationToken cancellationToken)
     {
-        var page = await dbContext.Pages.SingleOrDefaultAsync(x => x.Id == id && x.UserId == userId, cancellationToken);
-        if (page is null) return NotFoundProblem($"Page '{id}' was not found.");
-        page.Visibility = visibility;
-        page.PublicSlug = slug;
+        var log = await dbContext.Logs.SingleOrDefaultAsync(x => x.Id == id && x.UserId == userId, cancellationToken);
+        if (log is null) return NotFoundProblem($"Log '{id}' was not found.");
+        log.Visibility = visibility;
+        log.PublicSlug = slug;
         await dbContext.SaveChangesAsync(cancellationToken);
-        return Ok(new ApiEnvelope<PublishResponse>(new PublishResponse("page", id, visibility, slug)));
+        return Ok(new ApiEnvelope<PublishResponse>(new PublishResponse("log", id, visibility, slug)));
     }
 
     private async Task<ActionResult<ApiEnvelope<PublishResponse>>> UpdateListAsync(Guid id, Guid userId, Visibility visibility, string? slug, CancellationToken cancellationToken)

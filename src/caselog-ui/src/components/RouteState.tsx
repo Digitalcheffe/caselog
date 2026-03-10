@@ -30,7 +30,7 @@ export const RouteState = ({ title, description, loading = false, error = null, 
 
   return (
     <section className="panel">
-      <p className="panel-meta accent">Page scaffold</p>
+      <p className="panel-meta accent">Log scaffold</p>
       <h2 className="panel-title">{title}</h2>
       <p className="panel-description">{description}</p>
       {children}

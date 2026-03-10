@@ -17,18 +17,18 @@ public sealed class ListsController(CaselogDbContext dbContext, TaggingService t
     public async Task<ActionResult<ApiEnvelope<PagedResult<ListTypeResponse>>>> GetListTypes([FromQuery] PaginationQuery query, CancellationToken cancellationToken)
     {
         var userId = GetUserId();
-        var page = query.NormalizedPage;
+        var log = query.NormalizedPage;
         var pageSize = query.NormalizedPageSize;
 
         var baseQuery = dbContext.ListTypes.AsNoTracking().Where(x => x.UserId == userId).OrderBy(x => x.Name);
         var totalCount = await baseQuery.CountAsync(cancellationToken);
         var items = await baseQuery
-            .Skip((page - 1) * pageSize)
+            .Skip((log - 1) * pageSize)
             .Take(pageSize)
             .Select(x => new ListTypeResponse(x.Id, x.Name, x.Description, x.Visibility, x.PublicSlug, x.CreatedAt))
             .ToListAsync(cancellationToken);
 
-        return Ok(new ApiEnvelope<PagedResult<ListTypeResponse>>(new PagedResult<ListTypeResponse>(items, new PaginationMeta(page, pageSize, totalCount, (int)Math.Ceiling(totalCount / (double)pageSize)))));
+        return Ok(new ApiEnvelope<PagedResult<ListTypeResponse>>(new PagedResult<ListTypeResponse>(items, new PaginationMeta(log, pageSize, totalCount, (int)Math.Ceiling(totalCount / (double)pageSize)))));
     }
 
     [HttpGet("{id:guid}")]
@@ -218,14 +218,14 @@ public sealed class ListsController(CaselogDbContext dbContext, TaggingService t
             return NotFoundProblem($"List '{id}' was not found.");
         }
 
-        var page = query.NormalizedPage;
+        var log = query.NormalizedPage;
         var pageSize = query.NormalizedPageSize;
         var totalCount = await dbContext.ListEntries.AsNoTracking().CountAsync(x => x.UserId == userId && x.ListTypeId == id, cancellationToken);
 
         var entries = await dbContext.ListEntries.AsNoTracking()
             .Where(x => x.UserId == userId && x.ListTypeId == id)
             .OrderByDescending(x => x.UpdatedAt)
-            .Skip((page - 1) * pageSize)
+            .Skip((log - 1) * pageSize)
             .Take(pageSize)
             .Select(x => new { x.Id, x.ListTypeId, x.CreatedAt, x.UpdatedAt })
             .ToListAsync(cancellationToken);
@@ -237,7 +237,7 @@ public sealed class ListsController(CaselogDbContext dbContext, TaggingService t
             .ToListAsync(cancellationToken);
 
         var responses = entries.Select(entry => BuildEntryResponse(entry.Id, entry.ListTypeId, entry.CreatedAt, entry.UpdatedAt, fields, values)).ToList();
-        return Ok(new ApiEnvelope<PagedResult<ListEntryResponse>>(new PagedResult<ListEntryResponse>(responses, new PaginationMeta(page, pageSize, totalCount, (int)Math.Ceiling(totalCount / (double)pageSize)))));
+        return Ok(new ApiEnvelope<PagedResult<ListEntryResponse>>(new PagedResult<ListEntryResponse>(responses, new PaginationMeta(log, pageSize, totalCount, (int)Math.Ceiling(totalCount / (double)pageSize)))));
     }
 
     [HttpPost("{id:guid}/entries")]

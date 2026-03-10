@@ -145,12 +145,12 @@ public sealed class FollowUpsController(CaselogDbContext dbContext, TaggingServi
     {
         switch (entityType)
         {
-            case "page":
+            case "log":
             {
-                var page = await dbContext.Pages.AsNoTracking().Where(x => x.Id == entityId && x.UserId == userId)
+                var log = await dbContext.Logs.AsNoTracking().Where(x => x.Id == entityId && x.UserId == userId)
                     .Select(x => new { x.Title })
                     .SingleOrDefaultAsync(cancellationToken);
-                return page is null ? null : (page.Title, $"/pages/{entityId}");
+                return log is null ? null : (log.Title, $"/logs/{entityId}");
             }
             case "listentry":
             {
@@ -180,19 +180,19 @@ public sealed class FollowUpsController(CaselogDbContext dbContext, TaggingServi
                     .SingleOrDefaultAsync(cancellationToken);
                 return note is null ? null : (SummarizeNote(note.Content), $"/notes");
             }
-            case "notebook":
+            case "kase":
             {
-                var notebook = await dbContext.Notebooks.AsNoTracking().Where(x => x.Id == entityId && x.UserId == userId)
+                var kase = await dbContext.Kases.AsNoTracking().Where(x => x.Id == entityId && x.UserId == userId)
                     .Select(x => new { x.Name })
                     .SingleOrDefaultAsync(cancellationToken);
-                return notebook is null ? null : (notebook.Name, $"/notebooks/{entityId}");
+                return kase is null ? null : (kase.Name, $"/kases/{entityId}");
             }
-            case "shelf":
+            case "":
             {
-                var shelf = await dbContext.Shelves.AsNoTracking().Where(x => x.Id == entityId && x.UserId == userId)
+                var  = await dbContext..AsNoTracking().Where(x => x.Id == entityId && x.UserId == userId)
                     .Select(x => new { x.Name })
                     .SingleOrDefaultAsync(cancellationToken);
-                return shelf is null ? null : (shelf.Name, $"/shelves/{entityId}");
+                return  is null ? null : (.Name, $"//{entityId}");
             }
             default:
                 return null;

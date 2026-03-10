@@ -24,9 +24,9 @@ public sealed class TaggingService(CaselogDbContext dbContext)
     {
         return entityType switch
         {
-            "page" => await dbContext.Pages.AsNoTracking().AnyAsync(x => x.Id == entityId && x.UserId == userId, cancellationToken),
-            "shelf" => await dbContext.Shelves.AsNoTracking().AnyAsync(x => x.Id == entityId && x.UserId == userId, cancellationToken),
-            "notebook" => await dbContext.Notebooks.AsNoTracking().AnyAsync(x => x.Id == entityId && x.UserId == userId, cancellationToken),
+            "log" => await dbContext.Logs.AsNoTracking().AnyAsync(x => x.Id == entityId && x.UserId == userId, cancellationToken),
+            "" => await dbContext..AsNoTracking().AnyAsync(x => x.Id == entityId && x.UserId == userId, cancellationToken),
+            "kase" => await dbContext.Kases.AsNoTracking().AnyAsync(x => x.Id == entityId && x.UserId == userId, cancellationToken),
             "list" => await dbContext.ListTypes.AsNoTracking().AnyAsync(x => x.Id == entityId && x.UserId == userId, cancellationToken),
             "listentry" => await dbContext.ListEntries.AsNoTracking().AnyAsync(x => x.Id == entityId && x.UserId == userId, cancellationToken),
             "mindmap" => await dbContext.MindMaps.AsNoTracking().AnyAsync(x => x.Id == entityId && x.UserId == userId, cancellationToken),

@@ -2,7 +2,7 @@ import { apiRequest } from "./client";
 
 export type Attachment = { id: string; fileName: string };
 
-export type Page = {
+export type Log = {
   id: string;
   title: string;
   content: string;
@@ -14,8 +14,8 @@ export type Page = {
   updatedAt: string;
   notebookId?: string;
 };
-export type Shelf = { id: string; name: string; description: string };
-export type Notebook = {
+export type Kase = { id: string; name: string; description: string };
+export type Kase = {
   id: string;
   shelfId: string;
   name: string;
@@ -109,7 +109,7 @@ type ApiPage = {
   notebookId?: string;
 };
 
-const toPage = (page: ApiPage): Page => {
+const toPage = (page: ApiPage): Log => {
   const now = new Date().toISOString();
   return {
     id: page.id,
@@ -129,11 +129,11 @@ const toPage = (page: ApiPage): Page => {
 export const updatePage = async (
   id: string,
   body: Partial<
-    Pick<Page, "title" | "content" | "visibility" | "followUp" | "tags">
+    Pick<Log, "title" | "content" | "visibility" | "followUp" | "tags">
   >,
-): Promise<Page> =>
+): Promise<Log> =>
   toPage(
-    await apiRequest<ApiPage>(`/api/pages/${id}`, {
+    await apiRequest<ApiPage>(`/api/logs/${id}`, {
       method: "PUT",
       body: JSON.stringify(body),
     }),
@@ -142,7 +142,7 @@ export const updatePage = async (
 export const uploadPageAttachment = async (id: string, file: File): Promise<void> => {
   const formData = new FormData();
   formData.append("file", file);
-  await apiRequest<unknown>(`/api/pages/${id}/attachments`, {
+  await apiRequest<unknown>(`/api/logs/${id}/attachments`, {
     method: "POST",
     body: formData,
     headers: {},
@@ -150,20 +150,20 @@ export const uploadPageAttachment = async (id: string, file: File): Promise<void
 };
 
 export const deletePage = async (id: string): Promise<void> => {
-  await apiRequest<unknown>(`/api/pages/${id}`, { method: "DELETE" });
+  await apiRequest<unknown>(`/api/logs/${id}`, { method: "DELETE" });
 };
 
 
-export const getNotebookPages = async (notebookId: string): Promise<Page[]> => {
-  const response = await apiRequest<PagedResult<ApiPage>>(`/api/notebooks/${notebookId}/pages`);
+export const getNotebookPages = async (notebookId: string): Promise<Log[]> => {
+  const response = await apiRequest<PagedResult<ApiPage>>(`/api/kases/${notebookId}/logs`);
   return response.items.map(toPage);
 };
 
 export const createNotebookPage = async (
   notebookId: string,
   body: { title: string },
-): Promise<Page> => {
-  const response = await apiRequest<ApiPage>(`/api/notebooks/${notebookId}/pages`, {
+): Promise<Log> => {
+  const response = await apiRequest<ApiPage>(`/api/kases/${notebookId}/logs`, {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -179,24 +179,24 @@ type ApiNotebook = {
   pageCount?: number;
 };
 
-const toNotebook = (notebook: ApiNotebook): Notebook => ({
-  id: notebook.id,
-  shelfId: notebook.shelfId,
-  name: notebook.name ?? notebook.title ?? "Untitled Notebook",
-  description: notebook.description,
-  pageCount: notebook.pageCount,
+const toNotebook = (kase: ApiNotebook): Kase => ({
+  id: kase.id,
+  shelfId: kase.shelfId,
+  name: kase.name ?? kase.title ?? "Untitled Kase",
+  description: kase.description,
+  pageCount: kase.pageCount,
 });
 
-export const getShelfNotebooks = async (shelfId: string): Promise<Notebook[]> => {
-  const response = await apiRequest<PagedResult<ApiNotebook>>(`/api/shelves/${shelfId}/notebooks`);
+export const getShelfNotebooks = async (shelfId: string): Promise<Kase[]> => {
+  const response = await apiRequest<PagedResult<ApiNotebook>>(`/api/kases/${shelfId}/kases`);
   return response.items.map(toNotebook);
 };
 
 export const createShelfNotebook = async (
   shelfId: string,
   body: { name: string },
-): Promise<Notebook> => {
-  const response = await apiRequest<ApiNotebook>(`/api/notebooks`, {
+): Promise<Kase> => {
+  const response = await apiRequest<ApiNotebook>(`/api/kases`, {
     method: "POST",
     body: JSON.stringify({ shelfId, name: body.name, description: null }),
   });
@@ -210,21 +210,21 @@ type ApiShelf = {
   notebookCount?: number;
 };
 
-export const getShelves = async (): Promise<(Shelf & { notebookCount?: number })[]> => {
-  const response = await apiRequest<PagedResult<ApiShelf>>("/api/shelves?page=1&pageSize=200");
-  return response.items.map((shelf) => ({
-    id: shelf.id,
-    name: shelf.name,
-    description: shelf.description ?? "",
-    notebookCount: shelf.notebookCount,
+export const getShelves = async (): Promise<(Kase & { notebookCount?: number })[]> => {
+  const response = await apiRequest<PagedResult<ApiShelf>>("/api/kases?page=1&pageSize=200");
+  return response.items.map((kase) => ({
+    id: kase.id,
+    name: kase.name,
+    description: kase.description ?? "",
+    notebookCount: kase.notebookCount,
   }));
 };
 
 export const createShelf = async (body: {
   name: string;
   description: string;
-}): Promise<Shelf> => {
-  const response = await apiRequest<ApiShelf>("/api/shelves", {
+}): Promise<Kase> => {
+  const response = await apiRequest<ApiShelf>("/api/kases", {
     method: "POST",
     body: JSON.stringify(body),
   });
@@ -237,26 +237,26 @@ export const createShelf = async (body: {
 
 
 export const deleteShelf = async (id: string): Promise<void> => {
-  await apiRequest<unknown>(`/api/shelves/${id}`, { method: "DELETE" });
+  await apiRequest<unknown>(`/api/kases/${id}`, { method: "DELETE" });
 };
 
-export const getNotebook = async (id: string): Promise<Notebook> =>
-  toNotebook(await apiRequest<ApiNotebook>(`/api/notebooks/${id}`));
+export const getNotebook = async (id: string): Promise<Kase> =>
+  toNotebook(await apiRequest<ApiNotebook>(`/api/kases/${id}`));
 
-export const getPage = async (id: string): Promise<Page> => toPage(await apiRequest<ApiPage>(`/api/pages/${id}`));
+export const getPage = async (id: string): Promise<Log> => toPage(await apiRequest<ApiPage>(`/api/logs/${id}`));
 
-export const searchPages = async (query: string): Promise<Page[]> => {
+export const searchPages = async (query: string): Promise<Log[]> => {
   const response = await apiRequest<ApiPage[]>(`/api/search?q=${encodeURIComponent(query)}`);
   return response.map(toPage);
 };
 
-export const getFollowUpPages = async (): Promise<Page[]> => {
-  const response = await apiRequest<PagedResult<ApiPage>>("/api/pages?followUp=true");
+export const getFollowUpPages = async (): Promise<Log[]> => {
+  const response = await apiRequest<PagedResult<ApiPage>>("/api/logs?followUp=true");
   return response.items.map(toPage);
 };
 
-export const getRecentPages = async (): Promise<Page[]> => {
-  const response = await apiRequest<PagedResult<ApiPage>>("/api/pages?sort=modified&limit=10");
+export const getRecentPages = async (): Promise<Log[]> => {
+  const response = await apiRequest<PagedResult<ApiPage>>("/api/logs?sort=modified&limit=10");
   return response.items.map(toPage);
 };
 
@@ -365,8 +365,8 @@ export const attachMindMapToPage = async (mindMapId: string, pageId: string): Pr
   });
 };
 
-export const getPages = async (query = "page=1&pageSize=200"): Promise<Page[]> => {
-  const response = await apiRequest<PagedResult<ApiPage>>(`/api/pages?${query}`);
+export const getPages = async (query = "page=1&pageSize=200"): Promise<Log[]> => {
+  const response = await apiRequest<PagedResult<ApiPage>>(`/api/logs?${query}`);
   return response.items.map(toPage);
 };
 
