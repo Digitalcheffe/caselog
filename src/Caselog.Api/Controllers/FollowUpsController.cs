@@ -25,7 +25,7 @@ public sealed class FollowUpsController(CaselogDbContext dbContext, TaggingServi
         foreach (var followUp in followUps)
         {
             var entityDetails = await ResolveEntityDetailsAsync(followUp.EntityType, followUp.EntityId, userId, cancellationToken);
-            if (entityDetails is null)
+            if (entityDetails is not { } details)
             {
                 continue;
             }
@@ -33,9 +33,9 @@ public sealed class FollowUpsController(CaselogDbContext dbContext, TaggingServi
             var source = await ResolveSourceTagAsync(followUp.EntityType, followUp.EntityId, cancellationToken);
             response.Add(new FollowUpResponse(
                 followUp.Id,
-                entityDetails.Title,
+                details.Title,
                 followUp.EntityType,
-                entityDetails.Location,
+                details.Location,
                 followUp.Note,
                 followUp.CreatedAt,
                 source));
@@ -95,7 +95,7 @@ public sealed class FollowUpsController(CaselogDbContext dbContext, TaggingServi
         await dbContext.SaveChangesAsync(cancellationToken);
 
         var entityDetails = await ResolveEntityDetailsAsync(normalizedEntityType, id, userId, cancellationToken);
-        if (entityDetails is null)
+        if (entityDetails is not { } details)
         {
             return NotFoundProblem($"Entity '{normalizedEntityType}' with id '{id}' was not found.");
         }
@@ -103,9 +103,9 @@ public sealed class FollowUpsController(CaselogDbContext dbContext, TaggingServi
         var source = await ResolveSourceTagAsync(normalizedEntityType, id, cancellationToken);
         return Ok(new ApiEnvelope<FollowUpResponse>(new FollowUpResponse(
             existingOpenFollowUp.Id,
-            entityDetails.Title,
+            details.Title,
             normalizedEntityType,
-            entityDetails.Location,
+            details.Location,
             existingOpenFollowUp.Note,
             existingOpenFollowUp.CreatedAt,
             source)));
