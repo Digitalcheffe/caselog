@@ -1708,7 +1708,7 @@ const SettingsPage = () => {
     confirmPassword: "",
   });
   const [passwordErrors, setPasswordErrors] = useState<Record<string, string>>({});
-  const [twoFactorSetup, setTwoFactorSetup] = useState<{ qrCodeImageUrl: string; manualKey: string } | null>(null);
+  const [twoFactorSetup, setTwoFactorSetup] = useState<{ qrCode: string; secret: string } | null>(null);
   const [twoFactorToken, setTwoFactorToken] = useState("");
   const [sessions, setSessions] = useState<
     Array<{ id: string; device: string; browser: string; lastSeenAt: string; isCurrent: boolean }>
@@ -1727,7 +1727,7 @@ const SettingsPage = () => {
     .split(" ")
     .filter(Boolean)
     .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
+    .map((part: string) => part[0]?.toUpperCase() ?? "")
     .join("") || "U";
 
   const formatDate = (value?: string | null) => {
@@ -1795,7 +1795,7 @@ const SettingsPage = () => {
   const saveEmail = async () => {
     try {
       await updateProfileEmail(emailDraft.trim(), emailPassword);
-      setProfile((current) => (current ? { ...current, email: emailDraft.trim() } : current));
+      setProfile((current: ProfileResponse | null) => (current ? { ...current, email: emailDraft.trim() } : current));
       setIsEmailEditing(false);
       setIsEmailModalOpen(false);
       setEmailPassword("");
@@ -1837,7 +1837,7 @@ const SettingsPage = () => {
   const completeTwoFactorEnrollment = async () => {
     try {
       await enableTwoFactor(twoFactorToken);
-      setProfile((current) => (current ? { ...current, twoFactorEnabled: true } : current));
+      setProfile((current: ProfileResponse | null) => (current ? { ...current, twoFactorEnabled: true } : current));
       setTwoFactorSetup(null);
       setTwoFactorToken("");
       setNotice("2FA enabled");
@@ -1849,7 +1849,7 @@ const SettingsPage = () => {
   const disable2fa = async () => {
     try {
       await disableTwoFactor();
-      setProfile((current) => (current ? { ...current, twoFactorEnabled: false } : current));
+      setProfile((current: ProfileResponse | null) => (current ? { ...current, twoFactorEnabled: false } : current));
       setNotice("2FA disabled");
     } catch {
       setError("Unable to disable 2FA.");
@@ -2026,8 +2026,8 @@ const SettingsPage = () => {
                 <Button onClick={() => void startTwoFactorEnrollment()}>Enroll in 2FA</Button>
                 {twoFactorSetup ? (
                   <div className="twofa-setup">
-                    <img src={twoFactorSetup.qrCodeImageUrl} alt="2FA QR code" className="twofa-qr" />
-                    <p>Manual key: <code>{twoFactorSetup.manualKey}</code></p>
+                    <img src={twoFactorSetup.qrCode} alt="2FA QR code" className="twofa-qr" />
+                    <p>Manual key: <code>{twoFactorSetup.secret}</code></p>
                     <Input
                       placeholder="Enter TOTP code"
                       value={twoFactorToken}
