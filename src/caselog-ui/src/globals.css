@@ -571,3 +571,68 @@ button {
   max-height: 300px;
   overflow: auto;
 }
+
+.mindmap-editor-page {
+  height: calc(100vh - var(--top-nav-height) - (var(--content-padding) * 2));
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 12px;
+}
+
+.mindmap-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mindmap-canvas {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+  min-height: 0;
+}
+
+.mindmap-context {
+  position: fixed;
+  z-index: 120;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-elevated);
+  display: grid;
+  min-width: 180px;
+}
+
+.mindmap-context button {
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-primary);
+  text-align: left;
+  padding: 10px;
+  cursor: pointer;
+}
+
+.mindmap-context button:last-child {
+  border-bottom: 0;
+}
+
+.mindmap-modal {
+  width: min(520px, calc(100vw - 24px));
+}
+
+.mindmap-attach-list {
+  margin-top: 12px;
+  max-height: 280px;
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+}
+
+.mindmap-attach-list button {
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 8px;
+  text-align: left;
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+}
