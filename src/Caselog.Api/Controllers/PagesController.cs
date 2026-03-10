@@ -10,7 +10,7 @@ namespace Caselog.Api.Controllers;
 
 [Authorize]
 [Route("api/pages")]
-public sealed class PagesController(CaselogDbContext dbContext, PageSearchIndexService searchIndexService) : BaseApiController
+public sealed class PagesController(CaselogDbContext dbContext, PageSearchIndexService searchIndexService, TaggingService taggingService) : BaseApiController
 {
     [HttpGet]
     public async Task<ActionResult<ApiEnvelope<PagedResult<PageResponse>>>> GetPages([FromQuery] PaginationQuery query, CancellationToken cancellationToken)
@@ -69,6 +69,7 @@ public sealed class PagesController(CaselogDbContext dbContext, PageSearchIndexS
         };
 
         dbContext.Pages.Add(page);
+        await taggingService.AddTagsAsync("page", page.Id, ["type:page", "source:manual"], cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         await searchIndexService.UpsertAsync(page, cancellationToken);
 
