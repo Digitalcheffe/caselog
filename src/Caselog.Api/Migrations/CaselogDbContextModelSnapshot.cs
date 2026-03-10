@@ -43,5 +43,17 @@ partial class CaselogDbContextModelSnapshot : ModelSnapshot
             b.HasIndex("KaseId");
             b.ToTable("Logs");
         });
+
+        modelBuilder.Entity("Caselog.Api.Data.Entities.ListEntryFieldValue", b =>
+        {
+            b.Property<Guid>("Id");
+            b.Property<Guid>("ListEntryId");
+            b.Property<Guid>("ListTypeFieldId");
+            b.Property<string>("Value");
+            b.HasKey("Id");
+            b.HasIndex("ListEntryId");
+            b.HasIndex("ListTypeFieldId");
+            b.ToTable("ListEntryFieldValues");
+        });
     }
 }

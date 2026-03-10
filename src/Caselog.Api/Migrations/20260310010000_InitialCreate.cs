@@ -1,5 +1,6 @@
 using System;
 using Caselog.Api.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -32,6 +33,18 @@ public partial class InitialCreate : Migration
         migrationBuilder.CreateTable("ListTypes", table => new { Id = table.Column<Guid>(type: "TEXT", nullable: false), UserId = table.Column<Guid>(type: "TEXT", nullable: false), Name = table.Column<string>(type: "TEXT", nullable: false), Description = table.Column<string>(type: "TEXT", nullable: true), Visibility = table.Column<string>(type: "TEXT", nullable: false), PublicSlug = table.Column<string>(type: "TEXT", nullable: true), CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false) }, constraints: table => table.PrimaryKey("PK_ListTypes", x => x.Id));
         migrationBuilder.CreateTable("ListFields", table => new { Id = table.Column<Guid>(type: "TEXT", nullable: false), ListTypeId = table.Column<Guid>(type: "TEXT", nullable: false), FieldName = table.Column<string>(type: "TEXT", nullable: false), FieldType = table.Column<string>(type: "TEXT", nullable: false), Required = table.Column<bool>(type: "INTEGER", nullable: false), SortOrder = table.Column<int>(type: "INTEGER", nullable: false) }, constraints: table => { table.PrimaryKey("PK_ListFields", x => x.Id); table.ForeignKey("FK_ListFields_ListTypes_ListTypeId", x => x.ListTypeId, "ListTypes", "Id", onDelete: ReferentialAction.Cascade); });
         migrationBuilder.CreateTable("ListEntries", table => new { Id = table.Column<Guid>(type: "TEXT", nullable: false), UserId = table.Column<Guid>(type: "TEXT", nullable: false), ListTypeId = table.Column<Guid>(type: "TEXT", nullable: false), CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false), UpdatedAt = table.Column<DateTime>(type: "TEXT", nullable: false) }, constraints: table => { table.PrimaryKey("PK_ListEntries", x => x.Id); table.ForeignKey("FK_ListEntries_ListTypes_ListTypeId", x => x.ListTypeId, "ListTypes", "Id", onDelete: ReferentialAction.Cascade); });
+        migrationBuilder.CreateTable("ListEntryFieldValues", table => new
+        {
+            Id = table.Column<Guid>(type: "TEXT", nullable: false),
+            ListEntryId = table.Column<Guid>(type: "TEXT", nullable: false),
+            ListTypeFieldId = table.Column<Guid>(type: "TEXT", nullable: false),
+            Value = table.Column<string>(type: "TEXT", nullable: false)
+        }, constraints: table =>
+        {
+            table.PrimaryKey("PK_ListEntryFieldValues", x => x.Id);
+            table.ForeignKey("FK_ListEntryFieldValues_ListEntries_ListEntryId", x => x.ListEntryId, "ListEntries", "Id", onDelete: ReferentialAction.Cascade);
+            table.ForeignKey("FK_ListEntryFieldValues_ListFields_ListTypeFieldId", x => x.ListTypeFieldId, "ListFields", "Id", onDelete: ReferentialAction.Cascade);
+        });
         migrationBuilder.CreateTable("MindMaps", table => new { Id = table.Column<Guid>(type: "TEXT", nullable: false), UserId = table.Column<Guid>(type: "TEXT", nullable: false), Title = table.Column<string>(type: "TEXT", nullable: false), Visibility = table.Column<string>(type: "TEXT", nullable: false), PublicSlug = table.Column<string>(type: "TEXT", nullable: true), CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false), UpdatedAt = table.Column<DateTime>(type: "TEXT", nullable: false) }, constraints: table => table.PrimaryKey("PK_MindMaps", x => x.Id));
         migrationBuilder.CreateTable("MindMapNodes", table => new { Id = table.Column<Guid>(type: "TEXT", nullable: false), MindMapId = table.Column<Guid>(type: "TEXT", nullable: false), ParentNodeId = table.Column<Guid>(type: "TEXT", nullable: true), Label = table.Column<string>(type: "TEXT", nullable: false), Notes = table.Column<string>(type: "TEXT", nullable: true), SortOrder = table.Column<int>(type: "INTEGER", nullable: false) }, constraints: table => table.PrimaryKey("PK_MindMapNodes", x => x.Id));
         migrationBuilder.CreateTable("Notes", table => new { Id = table.Column<Guid>(type: "TEXT", nullable: false), UserId = table.Column<Guid>(type: "TEXT", nullable: false), EntityType = table.Column<string>(type: "TEXT", nullable: true), EntityId = table.Column<Guid>(type: "TEXT", nullable: true), Content = table.Column<string>(type: "TEXT", nullable: false), Visibility = table.Column<string>(type: "TEXT", nullable: false), PublicSlug = table.Column<string>(type: "TEXT", nullable: true), CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false), UpdatedAt = table.Column<DateTime>(type: "TEXT", nullable: false) }, constraints: table => table.PrimaryKey("PK_Notes", x => x.Id));
@@ -44,6 +57,8 @@ public partial class InitialCreate : Migration
         migrationBuilder.CreateIndex("IX_Logs_PublicSlug", "Logs", "PublicSlug", unique: true, filter: "\"PublicSlug\" IS NOT NULL");
         migrationBuilder.CreateIndex("IX_ListFields_ListTypeId", "ListFields", "ListTypeId");
         migrationBuilder.CreateIndex("IX_ListEntries_ListTypeId", "ListEntries", "ListTypeId");
+        migrationBuilder.CreateIndex("IX_ListEntryFieldValues_ListEntryId", "ListEntryFieldValues", "ListEntryId");
+        migrationBuilder.CreateIndex("IX_ListEntryFieldValues_ListTypeFieldId", "ListEntryFieldValues", "ListTypeFieldId");
         migrationBuilder.CreateIndex("IX_MindMaps_PublicSlug", "MindMaps", "PublicSlug", unique: true, filter: "\"PublicSlug\" IS NOT NULL");
         migrationBuilder.CreateIndex("IX_Notes_PublicSlug", "Notes", "PublicSlug", unique: true, filter: "\"PublicSlug\" IS NOT NULL");
         migrationBuilder.CreateIndex("IX_ListTypes_PublicSlug", "ListTypes", "PublicSlug", unique: true, filter: "\"PublicSlug\" IS NOT NULL");
@@ -54,6 +69,7 @@ public partial class InitialCreate : Migration
     {
         migrationBuilder.DropTable("EntityTags");
         migrationBuilder.DropTable("MindMapNodes");
+        migrationBuilder.DropTable("ListEntryFieldValues");
         migrationBuilder.DropTable("ListEntries");
         migrationBuilder.DropTable("ListFields");
         migrationBuilder.DropTable("Logs");

@@ -14,6 +14,7 @@ public class CaselogDbContext(DbContextOptions<CaselogDbContext> options) : DbCo
     public DbSet<ListType> ListTypes => Set<ListType>();
     public DbSet<ListTypeField> ListTypeFields => Set<ListTypeField>();
     public DbSet<ListEntry> ListEntries => Set<ListEntry>();
+    public DbSet<ListEntryFieldValue> ListEntryFieldValues => Set<ListEntryFieldValue>();
     public DbSet<MindMap> MindMaps => Set<MindMap>();
     public DbSet<MindMapNode> MindMapNodes => Set<MindMapNode>();
     public DbSet<Note> Notes => Set<Note>();
@@ -42,6 +43,17 @@ public class CaselogDbContext(DbContextOptions<CaselogDbContext> options) : DbCo
         modelBuilder.Entity<ListTypeField>().Property(x => x.FieldType).HasConversion<string>();
         modelBuilder.Entity<ListTypeField>().HasOne(x => x.ListType).WithMany(x => x.Fields).HasForeignKey(x => x.ListTypeId);
         modelBuilder.Entity<ListEntry>().HasOne(x => x.ListType).WithMany(x => x.Entries).HasForeignKey(x => x.ListTypeId);
+        modelBuilder.Entity<ListEntryFieldValue>()
+            .HasOne(v => v.ListEntry)
+            .WithMany(e => e.FieldValues)
+            .HasForeignKey(v => v.ListEntryId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<ListEntryFieldValue>()
+            .HasOne(v => v.ListTypeField)
+            .WithMany()
+            .HasForeignKey(v => v.ListTypeFieldId)
+            .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder.Entity<MindMap>().Property(x => x.Visibility).HasConversion<string>();
         modelBuilder.Entity<MindMap>().HasIndex(x => x.PublicSlug).IsUnique().HasFilter("\"PublicSlug\" IS NOT NULL");
