@@ -33,6 +33,7 @@ builder.Services
 builder.Services.AddAuthorization();
 builder.Services.AddControllers();
 builder.Services.AddScoped<PageSearchIndexService>();
+builder.Services.AddScoped<NoteSearchIndexService>();
 builder.Services.AddScoped<TaggingService>();
 
 var app = builder.Build();
