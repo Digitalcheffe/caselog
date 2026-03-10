@@ -1,6 +1,7 @@
 using Caselog.Api.Authentication;
 using Caselog.Api.Data;
 using Caselog.Api.Data.Entities;
+using Caselog.Api.Middleware;
 using Caselog.Api.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -8,13 +9,38 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Serilog;
+using Serilog.Events;
 
 var builder = WebApplication.CreateBuilder(args);
 
 var port = Environment.GetEnvironmentVariable("CASELOG_PORT") ?? "5000";
-var dataPath = Environment.GetEnvironmentVariable("CASELOG_DB_PATH")
+var configuredDbPath = Environment.GetEnvironmentVariable("CASELOG_DB_PATH");
+var dataPath = configuredDbPath
     ?? Environment.GetEnvironmentVariable("CASELOG_DATA_PATH")
     ?? "/data/caselog.db";
+var listeningUrl = $"http://0.0.0.0:{port}";
+
+var logFilePath = GetLogFilePath(configuredDbPath);
+var logDirectory = Path.GetDirectoryName(logFilePath);
+if (!string.IsNullOrWhiteSpace(logDirectory))
+{
+    Directory.CreateDirectory(logDirectory);
+}
+
+Log.Logger = new LoggerConfiguration()
+    .MinimumLevel.Debug()
+    .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
+    .Enrich.FromLogContext()
+    .WriteTo.Console(restrictedToMinimumLevel: LogEventLevel.Information)
+    .WriteTo.File(
+        path: logFilePath,
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 30,
+        restrictedToMinimumLevel: LogEventLevel.Debug)
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 var dataDirectory = Path.GetDirectoryName(dataPath);
 if (!string.IsNullOrWhiteSpace(dataDirectory))
@@ -22,7 +48,7 @@ if (!string.IsNullOrWhiteSpace(dataDirectory))
     Directory.CreateDirectory(dataDirectory);
 }
 
-builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
+builder.WebHost.UseUrls(listeningUrl);
 builder.Services.AddDbContext<CaselogDbContext>(options =>
     options.UseSqlite($"Data Source={dataPath}",
         sqliteOptions => sqliteOptions.MigrationsAssembly(typeof(CaselogDbContext).Assembly.GetName().Name)));
@@ -79,6 +105,14 @@ builder.Services.AddScoped<MindMapSearchIndexService>();
 
 var app = builder.Build();
 
+var startupChecks = new StartupChecks(
+    dataPath,
+    DbFileExists: false,
+    DbFileSize: null,
+    DbConnectionOk: false,
+    JwtConfigured: !string.IsNullOrWhiteSpace(builder.Configuration["CASELOG_JWT_SECRET"]),
+    SmtpConfigured: !string.IsNullOrWhiteSpace(builder.Configuration["CASELOG_SMTP_HOST"]) && !string.IsNullOrWhiteSpace(builder.Configuration["CASELOG_SMTP_FROM"]));
+
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<CaselogDbContext>();
@@ -106,6 +140,11 @@ await using (var scope = app.Services.CreateAsyncScope())
     await ApplyMigrationsWithRecoveryAsync(dbContext, logger, dataPath, pendingMigrations);
 
     await dbContext.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
+
+    startupChecks = startupChecks with
+    {
+        DbConnectionOk = await dbContext.Database.CanConnectAsync()
+    };
 
     var missingTables = await GetMissingRequiredTablesAsync(dbContext, ["Users", "UserApiKeys"]);
     if (missingTables.Count > 0)
@@ -152,6 +191,18 @@ await using (var scope = app.Services.CreateAsyncScope())
         logger.LogWarning("========================================================");
     }
 }
+
+if (File.Exists(dataPath))
+{
+    var info = new FileInfo(dataPath);
+    startupChecks = startupChecks with
+    {
+        DbFileExists = true,
+        DbFileSize = info.Length
+    };
+}
+
+LogStartupBanner(app.Logger, startupChecks, listeningUrl);
 
 static async Task ApplyMigrationsWithRecoveryAsync(
     CaselogDbContext dbContext,
@@ -258,6 +309,7 @@ app.UseSwaggerUI(options =>
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UseMiddleware<ApiRequestResponseLoggingMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -268,3 +320,74 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapFallbackToFile("index.html");
 
 app.Run();
+
+static string GetLogFilePath(string? configuredDbPath)
+{
+    var dbPath = string.IsNullOrWhiteSpace(configuredDbPath) ? "/data/caselog.db" : configuredDbPath;
+    var dbDirectory = Path.GetDirectoryName(dbPath);
+    var logsDirectory = string.IsNullOrWhiteSpace(dbDirectory)
+        ? "/data/logs"
+        : Path.Combine(dbDirectory, "logs");
+
+    return Path.Combine(logsDirectory, "caselog-.log");
+}
+
+static void LogStartupBanner(Microsoft.Extensions.Logging.ILogger logger, StartupChecks checks, string listeningUrl)
+{
+    var assembly = typeof(Program).Assembly;
+    var appName = assembly.GetName().Name ?? "Caselog.Api";
+    var version = assembly.GetName().Version?.ToString() ?? "unknown";
+    var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+    var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+
+    var dbStatus = checks.DbFileExists
+        ? $"exists, {FormatFileSize(checks.DbFileSize ?? 0)}"
+        : "missing";
+    var dbConnectStatus = checks.DbConnectionOk ? "✓ OK" : "✗ FAIL";
+    var jwtStatus = checks.JwtConfigured ? "✓ configured" : "✗ not configured";
+    var smtpStatus = checks.SmtpConfigured ? "✓ configured" : "✗ not configured";
+
+    logger.LogInformation("═══════════════════════════════════════");
+    logger.LogInformation("  {AppName} STARTUP — {Timestamp}", appName.ToUpperInvariant(), timestamp);
+    logger.LogInformation("═══════════════════════════════════════");
+    logger.LogInformation("  Version    : {Version}", version);
+    logger.LogInformation("  Environment: {EnvironmentName}", environmentName);
+    logger.LogInformation("  DB Path    : {DbPath} ({DbStatus})", checks.DbPath, dbStatus);
+    logger.LogInformation("  DB Connect : {DbConnectStatus}", dbConnectStatus);
+    logger.LogInformation("  JWT Secret : {JwtStatus}", jwtStatus);
+    logger.LogInformation("  SMTP       : {SmtpStatus}", smtpStatus);
+    logger.LogInformation("  Listening  : {ListeningUrl}", listeningUrl);
+    logger.LogInformation("═══════════════════════════════════════");
+}
+
+static string FormatFileSize(long bytes)
+{
+    const double kb = 1024;
+    const double mb = kb * 1024;
+    const double gb = mb * 1024;
+
+    if (bytes >= gb)
+    {
+        return $"{bytes / gb:0.##}GB";
+    }
+
+    if (bytes >= mb)
+    {
+        return $"{bytes / mb:0.##}MB";
+    }
+
+    if (bytes >= kb)
+    {
+        return $"{bytes / kb:0.##}KB";
+    }
+
+    return $"{bytes}B";
+}
+
+internal record StartupChecks(
+    string DbPath,
+    bool DbFileExists,
+    long? DbFileSize,
+    bool DbConnectionOk,
+    bool JwtConfigured,
+    bool SmtpConfigured);
