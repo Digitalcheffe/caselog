@@ -60,7 +60,7 @@ await using (var scope = app.Services.CreateAsyncScope())
             "Cannot initialize schema safely. Ensure migrations are committed and published with the API assembly.");
     }
 
-    await ApplyMigrationsWithRecoveryAsync(dbContext, logger, dataPath, pendingMigrations);
+    await ApplyMigrationsWithRecoveryAsync(dbContext, logger, dataPath, pendingMigrations, allMigrations);
 
     await dbContext.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
 
@@ -112,7 +112,8 @@ static async Task ApplyMigrationsWithRecoveryAsync(
     CaselogDbContext dbContext,
     ILogger logger,
     string dataPath,
-    string[] pendingMigrations)
+    string[] pendingMigrations,
+    string[] allMigrations)
 {
     try
     {
@@ -147,24 +148,20 @@ static async Task ApplyMigrationsWithRecoveryAsync(
     }
 
     logger.LogWarning(
-        "Detected migration history entries without domain tables. Recreating SQLite database file and reapplying migrations. AppliedMigrations=[{AppliedMigrations}]",
+        "Detected migration history entries without domain tables. Rebuilding __EFMigrationsHistory and reapplying all migrations. AppliedMigrations=[{AppliedMigrations}]",
         string.Join(", ", appliedMigrations));
 
-    await dbContext.DisposeAsync();
+    await dbContext.Database.ExecuteSqlRawAsync("DELETE FROM \"__EFMigrationsHistory\";");
 
-    if (File.Exists(dataPath))
+    if (allMigrations.Length == 0)
     {
-        File.Delete(dataPath);
+        throw new InvalidOperationException(
+            "Migrations recovery was requested but no runtime migrations were discovered.");
     }
 
-    var recoveryOptions = new DbContextOptionsBuilder<CaselogDbContext>()
-        .UseSqlite($"Data Source={dataPath}")
-        .Options;
+    await dbContext.Database.MigrateAsync();
 
-    await using var recoveryDbContext = new CaselogDbContext(recoveryOptions);
-    await recoveryDbContext.Database.MigrateAsync();
-
-    var missingTablesAfterRecovery = await GetMissingRequiredTablesAsync(recoveryDbContext, ["Users", "UserApiKeys"]);
+    var missingTablesAfterRecovery = await GetMissingRequiredTablesAsync(dbContext, ["Users", "UserApiKeys"]);
     if (missingTablesAfterRecovery.Count > 0)
     {
         throw new InvalidOperationException(
