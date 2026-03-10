@@ -274,12 +274,12 @@ partial class CaselogDbContextModelSnapshot : ModelSnapshot
 
         modelBuilder.Entity("Caselog.Api.Data.Entities.Notebook", b =>
         {
-            b.HasOne("Caselog.Api.Data.Entities.Shelf", "Shelf").WithMany("Notebooks").HasForeignKey("ShelfId").OnDelete(DeleteBehavior.SetNull);
+            b.HasOne("Caselog.Api.Data.Entities.Shelf", "Shelf").WithMany("Notebooks").HasForeignKey("ShelfId").OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity("Caselog.Api.Data.Entities.Page", b =>
         {
-            b.HasOne("Caselog.Api.Data.Entities.Notebook", "Notebook").WithMany("Pages").HasForeignKey("NotebookId").OnDelete(DeleteBehavior.SetNull);
+            b.HasOne("Caselog.Api.Data.Entities.Notebook", "Notebook").WithMany("Pages").HasForeignKey("NotebookId").OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity("Caselog.Api.Data.Entities.PageListAttachment", b =>
