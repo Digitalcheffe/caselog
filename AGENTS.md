@@ -581,3 +581,43 @@ Development is organized into checkpoints. Each checkpoint is a PR. A checkpoint
 4. The app starts and the checkpoint features work end to end
 
 **Do not merge features from a later checkpoint into an earlier checkpoint PR.** Keep them clean and scoped.
+
+## Goal
+Fix Caselog Docker build/deploy issues and SQLite/EF Core initialization issues, then verify with real commands.
+
+## Repo layout
+- Docker assets: `docker/`
+- API: `src/Caselog.Api`
+- UI: `src/caselog-ui`
+
+## Key expectations
+- Capture real errors, not just wrapper messages
+- Prefer minimal, correct fixes
+- Verify Docker build and app startup before finishing
+- If EF migrations are missing, add them properly and ensure startup uses them safely
+
+## Investigation checklist
+1. Inspect:
+   - `docker/Dockerfile`
+   - `docker/docker-compose.yml`
+   - `src/Caselog.Api/Caselog.Api.csproj`
+   - `src/Caselog.Api/Program.cs`
+2. Search for:
+   - `Migrations`
+   - `DbContext`
+   - `Users`
+   - migration history reset logic
+3. Reproduce:
+   - `dotnet restore`
+   - `dotnet publish`
+   - `docker build`
+4. Verify final state:
+   - image builds
+   - app starts
+   - SQLite required tables exist
+
+## Useful commands
+- `find . -maxdepth 4 \( -name "*.csproj" -o -name "Directory.Build.props" -o -name "Directory.Build.targets" -o -name "NuGet.Config" -o -name "global.json" -o -name "*.sln" \) | sort`
+- `dotnet restore ./src/Caselog.Api/Caselog.Api.csproj`
+- `dotnet publish ./src/Caselog.Api/Caselog.Api.csproj -c Release -o /tmp/caselog-publish /p:UseAppHost=false`
+- `docker build -f docker/Dockerfile -t caselog-test .`
