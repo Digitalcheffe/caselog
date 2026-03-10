@@ -1,3 +1,5 @@
+import { apiRequest } from "./client";
+
 export type Attachment = { id: string; fileName: string };
 
 export type Page = {
@@ -13,7 +15,13 @@ export type Page = {
   notebookId?: string;
 };
 export type Shelf = { id: string; name: string; description: string };
-export type Notebook = { id: string; shelfId: string; name: string };
+export type Notebook = {
+  id: string;
+  shelfId: string;
+  name: string;
+  description?: string;
+  pageCount?: number;
+};
 
 const load = <T>(key: string, fallback: T): T => {
   const raw = window.localStorage.getItem(key);
@@ -104,4 +112,115 @@ export const deletePage = async (id: string) => {
   if (!response.ok) {
     throw new Error(`Failed to delete page (${response.status})`);
   }
+};
+
+type ApiPage = {
+  id: string;
+  title: string;
+  content?: string;
+  tags?: string[];
+  visibility?: "private" | "internal" | "public";
+  followUp?: boolean;
+  hasFollowUp?: boolean;
+  attachments?: Attachment[];
+  createdAt?: string;
+  updatedAt?: string;
+  notebookId?: string;
+};
+
+const toPage = (page: ApiPage): Page => {
+  const now = new Date().toISOString();
+  return {
+    id: page.id,
+    title: page.title,
+    content: page.content ?? "",
+    tags: page.tags ?? [],
+    visibility: page.visibility ?? "private",
+    followUp: page.followUp ?? page.hasFollowUp ?? false,
+    attachments: page.attachments ?? [],
+    createdAt: page.createdAt ?? now,
+    updatedAt: page.updatedAt ?? now,
+    notebookId: page.notebookId,
+  };
+};
+
+export const getNotebookPages = async (notebookId: string): Promise<Page[]> => {
+  const response = await apiRequest<ApiPage[]>(`/api/notebooks/${notebookId}/pages`);
+  return response.map(toPage);
+};
+
+export const createNotebookPage = async (
+  notebookId: string,
+  body: { title: string },
+): Promise<Page> => {
+  const response = await apiRequest<ApiPage>(`/api/notebooks/${notebookId}/pages`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return toPage(response);
+};
+
+type ApiNotebook = {
+  id: string;
+  shelfId: string;
+  name?: string;
+  title?: string;
+  description?: string;
+  pageCount?: number;
+};
+
+const toNotebook = (notebook: ApiNotebook): Notebook => ({
+  id: notebook.id,
+  shelfId: notebook.shelfId,
+  name: notebook.name ?? notebook.title ?? "Untitled Notebook",
+  description: notebook.description,
+  pageCount: notebook.pageCount,
+});
+
+export const getShelfNotebooks = async (shelfId: string): Promise<Notebook[]> => {
+  const response = await apiRequest<ApiNotebook[]>(`/api/shelves/${shelfId}/notebooks`);
+  return response.map(toNotebook);
+};
+
+export const createShelfNotebook = async (
+  shelfId: string,
+  body: { title: string },
+): Promise<Notebook> => {
+  const response = await apiRequest<ApiNotebook>(`/api/shelves/${shelfId}/notebooks`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return toNotebook(response);
+};
+
+type ApiShelf = {
+  id: string;
+  name: string;
+  description?: string;
+  notebookCount?: number;
+};
+
+export const getShelves = async (): Promise<(Shelf & { notebookCount?: number })[]> => {
+  const response = await apiRequest<ApiShelf[]>("/api/shelves");
+  return response.map((shelf) => ({
+    id: shelf.id,
+    name: shelf.name,
+    description: shelf.description ?? "",
+    notebookCount: shelf.notebookCount,
+  }));
+};
+
+export const createShelf = async (body: {
+  name: string;
+  description: string;
+}): Promise<Shelf> => {
+  const response = await apiRequest<ApiShelf>("/api/shelves", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+  return {
+    id: response.id,
+    name: response.name,
+    description: response.description ?? "",
+  };
 };
