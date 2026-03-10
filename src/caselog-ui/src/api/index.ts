@@ -371,199 +371,65 @@ export const attachListToPage = async (listId: string, pageId: string): Promise<
   });
 };
 
-export type ProfileResponse = {
+export type AdminUser = {
+  id: string;
   name: string;
   email: string;
-  avatarUrl?: string | null;
-  twoFactorEnabled?: boolean;
+  role: "admin" | "member";
+  enabled: boolean;
+  lastLoginAt: string | null;
 };
 
-export type TwoFactorSetupResponse = {
-  qrCodeImageUrl: string;
-  manualKey: string;
-};
-
-export type AuthSession = {
-  id: string;
-  device: string;
-  browser: string;
-  lastSeenAt: string;
-  isCurrent: boolean;
-};
-
-export type ApiKeyRecord = {
-  id: string;
+export type AdminUserInput = {
   name: string;
-  createdAt: string;
-  lastUsedAt?: string | null;
+  email: string;
+  password: string;
+  role: "admin" | "member";
 };
 
-export type CreatedApiKey = {
-  id: string;
+export type AdminUserUpdateInput = {
   name: string;
-  key: string;
-  createdAt: string;
+  email: string;
+  role: "admin" | "member";
+  enabled: boolean;
 };
 
-const tryApiRequest = async <T>(path: string, options?: RequestInit): Promise<T | null> => {
-  try {
-    return await apiRequest<T>(path, options);
-  } catch {
-    return null;
-  }
-};
+export const getAdminUsers = async (): Promise<AdminUser[]> => apiRequest<AdminUser[]>("/api/admin/users");
 
-export const getProfile = async (): Promise<ProfileResponse> => {
-  const authProfile = await tryApiRequest<ProfileResponse>("/api/auth/profile");
-  if (authProfile) return authProfile;
+export const getAdminUser = async (id: string): Promise<AdminUser> =>
+  apiRequest<AdminUser>(`/api/admin/users/${id}`);
 
-  const profile = await tryApiRequest<ProfileResponse>("/api/profile");
-  if (profile) return profile;
-
-  return {
-    name: "",
-    email: "",
-    avatarUrl: null,
-    twoFactorEnabled: false,
-  };
-};
-
-export const updateProfileName = async (name: string): Promise<ProfileResponse> => {
-  const authResult = await tryApiRequest<ProfileResponse>("/api/auth/profile", {
-    method: "PUT",
-    body: JSON.stringify({ name }),
-  });
-  if (authResult) return authResult;
-
-  const profileResult = await tryApiRequest<ProfileResponse>("/api/profile", {
-    method: "PUT",
-    body: JSON.stringify({ name }),
-  });
-  if (profileResult) return profileResult;
-
-  throw new Error("Profile update endpoint unavailable.");
-};
-
-export const updateProfileEmail = async (email: string, currentPassword: string): Promise<void> => {
-  const authResult = await tryApiRequest<{ updated: boolean }>("/api/auth/email", {
-    method: "PUT",
-    body: JSON.stringify({ email, currentPassword }),
-  });
-  if (authResult) return;
-
-  const profileResult = await tryApiRequest<{ updated: boolean }>("/api/profile", {
-    method: "PUT",
-    body: JSON.stringify({ email, currentPassword }),
-  });
-  if (profileResult) return;
-
-  throw new Error("Email update endpoint unavailable.");
-};
-
-export const updateProfilePassword = async (
-  currentPassword: string,
-  newPassword: string,
-): Promise<void> => {
-  const authResult = await tryApiRequest<{ updated: boolean }>("/api/auth/password", {
-    method: "PUT",
-    body: JSON.stringify({ currentPassword, newPassword }),
-  });
-  if (authResult) return;
-
-  const profileResult = await tryApiRequest<{ updated: boolean }>("/api/profile/password", {
-    method: "PUT",
-    body: JSON.stringify({ currentPassword, newPassword }),
-  });
-  if (profileResult) return;
-
-  throw new Error("Password update endpoint unavailable.");
-};
-
-export const getTwoFactorSetup = async (): Promise<TwoFactorSetupResponse> => {
-  const setup = await tryApiRequest<{ qrCodeImageUrl?: string; manualKey?: string; qrCodeDataUri?: string; secret?: string }>(
-    "/api/auth/2fa/setup",
-    { method: "POST" },
-  );
-
-  if (!setup) {
-    throw new Error("2FA setup endpoint unavailable.");
-  }
-
-  return {
-    qrCodeImageUrl: setup.qrCodeImageUrl ?? setup.qrCodeDataUri ?? "",
-    manualKey: setup.manualKey ?? setup.secret ?? "",
-  };
-};
-
-export const enableTwoFactor = async (token: string): Promise<void> => {
-  const enabled = await tryApiRequest<{ enabled: boolean }>("/api/auth/2fa/enable", {
+export const createAdminUser = async (payload: AdminUserInput): Promise<AdminUser> =>
+  apiRequest<AdminUser>("/api/admin/users", {
     method: "POST",
-    body: JSON.stringify({ token }),
+    body: JSON.stringify(payload),
   });
 
-  if (enabled) return;
-
-  const verified = await tryApiRequest<{ token?: string }>("/api/auth/2fa/verify", {
-    method: "POST",
-    body: JSON.stringify({ code: token }),
+export const updateAdminUser = async (id: string, payload: AdminUserUpdateInput): Promise<AdminUser> =>
+  apiRequest<AdminUser>(`/api/admin/users/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
   });
 
-  if (verified) return;
-
-  throw new Error("2FA enable endpoint unavailable.");
+export const deleteAdminUser = async (id: string): Promise<void> => {
+  await apiRequest<unknown>(`/api/admin/users/${id}`, { method: "DELETE" });
 };
 
-export const disableTwoFactor = async (): Promise<void> => {
-  const disabled = await tryApiRequest<{ disabled: boolean }>("/api/auth/2fa/disable", {
+export const toggleAdminUserStatus = async (id: string, enabled: boolean): Promise<void> => {
+  await apiRequest<unknown>(`/api/admin/users/${id}/${enabled ? "enable" : "disable"}`, {
+    method: "POST",
+  });
+};
+
+export const forceAdminUserResetPassword = async (id: string): Promise<void> => {
+  await apiRequest<unknown>(`/api/admin/users/${id}/reset-password`, { method: "POST" });
+};
+
+export const impersonateAdminUser = async (id: string): Promise<{ token: string }> =>
+  apiRequest<{ token: string }>(`/api/admin/users/${id}/impersonate`, {
     method: "POST",
   });
 
-  if (!disabled) {
-    throw new Error("2FA disable endpoint unavailable.");
-  }
-};
-
-export const getAuthSessions = async (): Promise<AuthSession[]> => {
-  const sessions = await tryApiRequest<AuthSession[]>("/api/auth/sessions");
-  return sessions ?? [];
-};
-
-export const revokeAuthSession = async (sessionId: string): Promise<void> => {
-  const revoked = await tryApiRequest<{ revoked: boolean }>(`/api/auth/sessions/${sessionId}`, {
-    method: "DELETE",
-  });
-
-  if (!revoked) {
-    throw new Error("Session revoke endpoint unavailable.");
-  }
-};
-
-export const getApiKeys = async (): Promise<ApiKeyRecord[]> => {
-  const response = await apiRequest<Array<{ id: string; label?: string; name?: string; createdAt: string; lastUsedAt?: string | null }>>("/api/apikeys");
-  return response.map((item) => ({
-    id: item.id,
-    name: item.name ?? item.label ?? "Unnamed key",
-    createdAt: item.createdAt,
-    lastUsedAt: item.lastUsedAt,
-  }));
-};
-
-export const createApiKey = async (name: string): Promise<CreatedApiKey> => {
-  const response = await apiRequest<{ id: string; label?: string; name?: string; key: string; createdAt: string }>("/api/apikeys", {
-    method: "POST",
-    body: JSON.stringify({ label: name }),
-  });
-
-  return {
-    id: response.id,
-    name: response.name ?? response.label ?? name,
-    key: response.key,
-    createdAt: response.createdAt,
-  };
-};
-
-export const revokeApiKey = async (keyId: string): Promise<void> => {
-  await apiRequest<{ revoked: boolean }>(`/api/apikeys/${keyId}`, {
-    method: "DELETE",
-  });
+export const exitAdminImpersonation = async (): Promise<void> => {
+  await apiRequest<unknown>("/api/admin/impersonate/exit", { method: "POST" });
 };

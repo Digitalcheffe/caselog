@@ -7,6 +7,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import {
+  createAdminUser,
   attachListToPage,
   createApiKey,
   createList,
@@ -24,9 +25,14 @@ import {
   revokeApiKey,
   revokeAuthSession,
   db,
+  deleteAdminUser,
   deleteEntry,
   deleteListField,
   deletePage,
+  exitAdminImpersonation,
+  forceAdminUserResetPassword,
+  getAdminUser,
+  getAdminUsers,
   getList,
   getListEntries,
   getListFields,
@@ -35,6 +41,7 @@ import {
   getShelfNotebooks,
   getShelves,
   type ListEntry,
+  type AdminUser,
   type ListFieldType,
   type ListType,
   type ListTypeField,
@@ -42,6 +49,9 @@ import {
   type Page,
   type ProfileResponse,
   type Shelf,
+  impersonateAdminUser,
+  toggleAdminUserStatus,
+  updateAdminUser,
   updateEntry,
   updateList,
   updatePage,
@@ -69,9 +79,11 @@ import {
 } from "./components/ui";
 import { useRouter } from "./hooks/useRouter";
 import { ThemeProvider, useTheme } from "./hooks/useTheme";
+import { MindMapEditorPage, MindMapsIndexPage } from "./components/mindmaps";
 
 const routes = [
   "/",
+  "/dashboard",
   "/shelves",
   "/shelves/:id",
   "/notebooks/:id",
@@ -90,14 +102,6 @@ const routes = [
   "/admin/users/:id",
   "/dev/components",
 ];
-type User = {
-  id: string;
-  name: string;
-  email: string;
-  role: "admin" | "member";
-  disabled?: boolean;
-};
-
 const AppInner = () => {
   const { theme, toggleTheme } = useTheme();
   const { currentRoute, pathname, params, navigate } = useRouter(routes);
@@ -114,17 +118,35 @@ const AppInner = () => {
   const [listFields, setListFields] = useState<ListTypeField[]>([]);
   const [listEntries, setListEntries] = useState<ListEntry[]>([]);
   const [toast, setToast] = useState("");
-  const [users, setUsers] = useState<User[]>([
-    { id: "u1", name: "Admin", email: "admin@local", role: "admin" },
-    { id: "u2", name: "Member", email: "member@local", role: "member" },
-  ]);
-  const isAdmin = true;
+  const [currentUserRole] = useState<"admin" | "member">("admin");
+  const [impersonatingUser, setImpersonatingUser] = useState<{ id: string; name: string } | null>(() => {
+    const token = window.localStorage.getItem("caselog-impersonate-token");
+    const name = window.localStorage.getItem("caselog-impersonate-name");
+    const id = window.localStorage.getItem("caselog-impersonate-user-id");
+    if (!token || !name || !id) {
+      return null;
+    }
+
+    return { id, name };
+  });
+  const isAdmin = currentUserRole === "admin";
 
   useEffect(() => {
     if (!toast) return;
     const id = window.setTimeout(() => setToast(""), 1800);
     return () => window.clearTimeout(id);
   }, [toast]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      "--impersonation-banner-height",
+      impersonatingUser ? "42px" : "0px",
+    );
+
+    return () => {
+      document.documentElement.style.setProperty("--impersonation-banner-height", "0px");
+    };
+  }, [impersonatingUser]);
 
   useEffect(() => {
     const id = window.setTimeout(() => setDebouncedSearch(search), 300);
@@ -253,6 +275,7 @@ const AppInner = () => {
   let content: JSX.Element;
   switch (currentRoute) {
     case "/":
+    case "/dashboard":
       content = <Dashboard pages={pages} onQuickCapture={addQuickCapture} />;
       break;
     case "/shelves":
@@ -355,6 +378,12 @@ const AppInner = () => {
     case "/search":
       content = <SearchPage results={filtered} />;
       break;
+    case "/mindmaps":
+      content = <MindMapsIndexPage navigate={navigate} onToast={setToast} />;
+      break;
+    case "/mindmaps/:id":
+      content = params.id ? <MindMapEditorPage id={params.id} onToast={setToast} /> : <EmptyState title="Mind map missing" body="Not found." />;
+      break;
     case "/followups":
       content = <FollowUps pages={pages} setPages={setPages} />;
       break;
@@ -379,11 +408,12 @@ const AppInner = () => {
     case "/admin/users/:id":
       content = (
         <AdminUsers
-          users={users}
-          setUsers={setUsers}
           navigate={navigate}
           isAdmin={isAdmin}
           selectedId={params.id}
+          currentRoute={currentRoute}
+          onToast={setToast}
+          onImpersonatingChange={setImpersonatingUser}
         />
       );
       break;
@@ -403,18 +433,46 @@ const AppInner = () => {
   }
 
   return (
-    <AppShell
-      onNavigate={navigate}
-      onSearch={setSearch}
-      searchValue={search}
-      onToggleTheme={toggleTheme}
-      isDark={theme === "dark"}
-      isAdmin={isAdmin}
-      currentPath={pathname}
-    >
-      {content}
-      {toast && <Toast message={toast} />}
-    </AppShell>
+    <>
+      {impersonatingUser ? (
+        <div className="impersonation-banner">
+          ⚠ Impersonating {impersonatingUser.name} — {" "}
+          <button
+            type="button"
+            className="impersonation-exit"
+            onClick={() => {
+              void (async () => {
+                try {
+                  await exitAdminImpersonation();
+                } catch {
+                  // noop
+                } finally {
+                  window.localStorage.removeItem("caselog-impersonate-token");
+                  window.localStorage.removeItem("caselog-impersonate-name");
+                  window.localStorage.removeItem("caselog-impersonate-user-id");
+                  setImpersonatingUser(null);
+                  window.location.reload();
+                }
+              })();
+            }}
+          >
+            Exit Impersonation
+          </button>
+        </div>
+      ) : null}
+      <AppShell
+        onNavigate={navigate}
+        onSearch={setSearch}
+        searchValue={search}
+        onToggleTheme={toggleTheme}
+        isDark={theme === "dark"}
+        isAdmin={isAdmin}
+        currentPath={pathname}
+      >
+        {content}
+        {toast && <Toast message={toast} />}
+      </AppShell>
+    </>
   );
 };
 
@@ -2105,79 +2163,449 @@ const SettingsPage = () => {
 
 
 const AdminUsers = ({
-  users,
-  setUsers,
   navigate,
   isAdmin,
   selectedId,
+  currentRoute,
+  onToast,
+  onImpersonatingChange,
 }: {
-  users: User[];
-  setUsers: (v: User[]) => void;
   navigate: (path: string) => void;
   isAdmin: boolean;
   selectedId?: string;
+  currentRoute: string;
+  onToast: (value: string) => void;
+  onImpersonatingChange: (value: { id: string; name: string } | null) => void;
 }) => {
-  const [confirm, setConfirm] = useState<string | null>(null);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<AdminUser | null>(null);
+
+  const [newForm, setNewForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "member" as "admin" | "member",
+  });
+  const [editForm, setEditForm] = useState({
+    name: "",
+    email: "",
+    role: "member" as "admin" | "member",
+    enabled: true,
+  });
+  const [editUserName, setEditUserName] = useState("");
+
+  useEffect(() => {
+    if (!isAdmin) {
+      navigate("/dashboard");
+    }
+  }, [isAdmin, navigate]);
+
+  useEffect(() => {
+    if (!isAdmin || currentRoute !== "/admin/users") {
+      return;
+    }
+
+    const loadUsers = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        setUsers(await getAdminUsers());
+      } catch {
+        setError("Failed to load users");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadUsers();
+  }, [currentRoute, isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin || !selectedId || currentRoute !== "/admin/users/:id") {
+      return;
+    }
+
+    const loadUser = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const user = await getAdminUser(selectedId);
+        setEditUserName(user.name);
+        setEditForm({
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          enabled: user.enabled,
+        });
+      } catch {
+        setError("Failed to load user");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadUser();
+  }, [currentRoute, isAdmin, selectedId]);
+
   if (!isAdmin) {
-    navigate("/");
     return <EmptyState title="Forbidden" body="Admin only" />;
   }
-  if (window.location.pathname === "/admin/users/new")
+
+  const validateUserForm = (input: { name: string; email: string; password?: string }) => {
+    if (!input.name.trim() || !input.email.trim()) {
+      return "All fields are required";
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email)) {
+      return "Please provide a valid email address";
+    }
+
+    if (typeof input.password === "string" && input.password.length < 8) {
+      return "Password must be at least 8 characters";
+    }
+
+    return "";
+  };
+
+  const formatLastLogin = (value: string | null) => (value ? new Date(value).toLocaleString() : "Never");
+
+  if (currentRoute === "/admin/users/new") {
     return (
-      <Card>
-        <PageHeader title="Create user" />
-        <Input placeholder="Display name" />
-        <Input placeholder="Email" />
-        <Select>
-          <option>member</option>
-          <option>admin</option>
-        </Select>
-        <Button>Create</Button>
-      </Card>
-    );
-  if (selectedId)
-    return (
-      <Card>
-        <PageHeader title="Edit user" />
-        <p>{users.find((u) => u.id === selectedId)?.email}</p>
-      </Card>
-    );
-  return (
-    <div>
-      <PageHeader title="User management" />
-      {users.map((u) => (
-        <Card key={u.id}>
+      <div>
+        <PageHeader title="New user" />
+        <Card className="admin-form-card">
+          <label className="meta-label" htmlFor="new-user-name">
+            Full name
+          </label>
+          <Input
+            id="new-user-name"
+            value={newForm.name}
+            onChange={(event) => setNewForm((previous) => ({ ...previous, name: event.target.value }))}
+          />
+
+          <label className="meta-label" htmlFor="new-user-email">
+            Email
+          </label>
+          <Input
+            id="new-user-email"
+            type="email"
+            value={newForm.email}
+            onChange={(event) => setNewForm((previous) => ({ ...previous, email: event.target.value }))}
+          />
+
+          <label className="meta-label" htmlFor="new-user-password">
+            Password
+          </label>
+          <Input
+            id="new-user-password"
+            type="password"
+            value={newForm.password}
+            onChange={(event) =>
+              setNewForm((previous) => ({ ...previous, password: event.target.value }))
+            }
+          />
+
+          <label className="meta-label" htmlFor="new-user-role">
+            Role
+          </label>
+          <Select
+            id="new-user-role"
+            value={newForm.role}
+            onChange={(event) =>
+              setNewForm((previous) => ({
+                ...previous,
+                role: event.target.value as "admin" | "member",
+              }))
+            }
+          >
+            <option value="member">member</option>
+            <option value="admin">admin</option>
+          </Select>
+
           <div className="row">
-            <span>
-              {u.name} ({u.role})
-            </span>
-            <Button variant="ghost">Impersonate</Button>
+            <Button
+              onClick={() => {
+                void (async () => {
+                  const validationError = validateUserForm(newForm);
+                  if (validationError) {
+                    onToast(validationError);
+                    return;
+                  }
+
+                  try {
+                    await createAdminUser({
+                      name: newForm.name.trim(),
+                      email: newForm.email.trim(),
+                      password: newForm.password,
+                      role: newForm.role,
+                    });
+                    onToast("User created");
+                    navigate("/admin/users");
+                  } catch {
+                    onToast("Failed to create user");
+                  }
+                })();
+              }}
+            >
+              Create user
+            </Button>
+            <Button variant="secondary" onClick={() => navigate("/admin/users")}>
+              Cancel
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  if (currentRoute === "/admin/users/:id" && selectedId) {
+    return (
+      <div>
+        <PageHeader title="Edit user" />
+        <Card className="admin-form-card">
+          {loading ? <p className="muted">Loading user…</p> : null}
+          {error ? <p className="muted">{error}</p> : null}
+
+          <label className="meta-label" htmlFor="edit-user-name">
+            Full name
+          </label>
+          <Input
+            id="edit-user-name"
+            value={editForm.name}
+            onChange={(event) => setEditForm((previous) => ({ ...previous, name: event.target.value }))}
+          />
+
+          <label className="meta-label" htmlFor="edit-user-email">
+            Email
+          </label>
+          <Input
+            id="edit-user-email"
+            type="email"
+            value={editForm.email}
+            onChange={(event) =>
+              setEditForm((previous) => ({ ...previous, email: event.target.value }))
+            }
+          />
+
+          <label className="meta-label" htmlFor="edit-user-role">
+            Role
+          </label>
+          <Select
+            id="edit-user-role"
+            value={editForm.role}
+            onChange={(event) =>
+              setEditForm((previous) => ({
+                ...previous,
+                role: event.target.value as "admin" | "member",
+              }))
+            }
+          >
+            <option value="member">member</option>
+            <option value="admin">admin</option>
+          </Select>
+
+          <label className="row admin-enabled-toggle">
+            <Checkbox
+              checked={editForm.enabled}
+              onChange={(event) =>
+                setEditForm((previous) => ({ ...previous, enabled: event.target.checked }))
+              }
+            />
+            Enabled
+          </label>
+
+          <div className="row admin-actions-row">
+            <Button
+              onClick={() => {
+                void (async () => {
+                  const validationError = validateUserForm(editForm);
+                  if (validationError) {
+                    onToast(validationError);
+                    return;
+                  }
+
+                  try {
+                    await updateAdminUser(selectedId, {
+                      name: editForm.name.trim(),
+                      email: editForm.email.trim(),
+                      role: editForm.role,
+                      enabled: editForm.enabled,
+                    });
+                    onToast("User saved");
+                    navigate("/admin/users");
+                  } catch {
+                    onToast("Failed to save user");
+                  }
+                })();
+              }}
+            >
+              Save
+            </Button>
             <Button
               variant="secondary"
-              onClick={() =>
-                setUsers(
-                  users.map((x) =>
-                    x.id === u.id ? { ...x, disabled: !x.disabled } : x,
-                  ),
-                )
-              }
+              onClick={() => {
+                void (async () => {
+                  try {
+                    await forceAdminUserResetPassword(selectedId);
+                    onToast("Password reset triggered");
+                  } catch {
+                    onToast("Failed to trigger password reset");
+                  }
+                })();
+              }}
             >
-              {u.disabled ? "Enable" : "Disable"}
+              Force password reset
             </Button>
-            <Button variant="danger" onClick={() => setConfirm(u.id)}>
+            <Button variant="secondary" onClick={() => navigate("/admin/users")}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => setConfirmDelete({ id: selectedId, name: editUserName, email: editForm.email, role: editForm.role, enabled: editForm.enabled, lastLoginAt: null })}
+            >
               Delete
             </Button>
           </div>
         </Card>
-      ))}
+        <ConfirmDialog
+          open={Boolean(confirmDelete)}
+          title={confirmDelete ? `Delete user ${confirmDelete.name}?` : "Delete user"}
+          body="This cannot be undone."
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => {
+            void (async () => {
+              if (!confirmDelete) {
+                return;
+              }
+
+              try {
+                await deleteAdminUser(confirmDelete.id);
+                onToast("User deleted");
+                navigate("/admin/users");
+              } catch {
+                onToast("Cannot delete the last admin account");
+              } finally {
+                setConfirmDelete(null);
+              }
+            })();
+          }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <PageHeader
+        title="User management"
+        actions={<Button onClick={() => navigate("/admin/users/new")}>New User</Button>}
+      />
+      {loading ? <p className="muted">Loading users…</p> : null}
+      {error ? <p className="muted">{error}</p> : null}
+
+      <Card className="admin-users-table-wrap">
+        <table className="admin-users-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Last Login</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map((user) => (
+              <tr key={user.id}>
+                <td>{user.name}</td>
+                <td>{user.email}</td>
+                <td>
+                  <Badge tone={user.role === "admin" ? "accent" : "neutral"}>{user.role}</Badge>
+                </td>
+                <td>
+                  <Badge tone={user.enabled ? "success" : "warning"}>
+                    {user.enabled ? "Enabled" : "Disabled"}
+                  </Badge>
+                </td>
+                <td>{formatLastLogin(user.lastLoginAt)}</td>
+                <td>
+                  <div className="row admin-table-actions">
+                    <Button variant="ghost" onClick={() => navigate(`/admin/users/${user.id}`)}>
+                      Edit
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        void (async () => {
+                          try {
+                            const result = await impersonateAdminUser(user.id);
+                            window.localStorage.setItem("caselog-impersonate-token", result.token);
+                            window.localStorage.setItem("caselog-impersonate-name", user.name);
+                            window.localStorage.setItem("caselog-impersonate-user-id", user.id);
+                            onImpersonatingChange({ id: user.id, name: user.name });
+                            window.location.reload();
+                          } catch {
+                            onToast("Failed to impersonate user");
+                          }
+                        })();
+                      }}
+                    >
+                      Impersonate
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        void (async () => {
+                          try {
+                            await toggleAdminUserStatus(user.id, !user.enabled);
+                            setUsers((previous) =>
+                              previous.map((item) =>
+                                item.id === user.id ? { ...item, enabled: !item.enabled } : item,
+                              ),
+                            );
+                          } catch {
+                            onToast("Failed to update user status");
+                          }
+                        })();
+                      }}
+                    >
+                      {user.enabled ? "Disable" : "Enable"}
+                    </Button>
+                    <Button variant="danger" onClick={() => setConfirmDelete(user)}>
+                      Delete
+                    </Button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+
       <ConfirmDialog
-        open={Boolean(confirm)}
-        title="Delete user"
-        body="Delete this account?"
-        onCancel={() => setConfirm(null)}
+        open={Boolean(confirmDelete)}
+        title={confirmDelete ? `Delete user ${confirmDelete.name}?` : "Delete user"}
+        body="This cannot be undone."
+        onCancel={() => setConfirmDelete(null)}
         onConfirm={() => {
-          setUsers(users.filter((u) => u.id !== confirm));
-          setConfirm(null);
+          void (async () => {
+            if (!confirmDelete) {
+              return;
+            }
+
+            try {
+              await deleteAdminUser(confirmDelete.id);
+              setUsers((previous) => previous.filter((item) => item.id !== confirmDelete.id));
+              onToast("User deleted");
+            } catch {
+              onToast("Cannot delete the last admin account");
+            } finally {
+              setConfirmDelete(null);
+            }
+          })();
         }}
       />
     </div>
