@@ -9,7 +9,7 @@ namespace Caselog.Api.Controllers;
 
 [Authorize]
 [Route("api/{entityType}/{id:guid}/tags")]
-public sealed class EntityTagsController(CaselogDbContext dbContext, TaggingService taggingService, PageSearchIndexService pageSearchIndexService) : BaseApiController
+public sealed class EntityTagsController(CaselogDbContext dbContext, TaggingService taggingService, PageSearchIndexService pageSearchIndexService, MindMapSearchIndexService mindMapSearchIndexService) : BaseApiController
 {
     [HttpPost]
     public async Task<ActionResult<ApiEnvelope<IReadOnlyList<string>>>> AddTags(string entityType, Guid id, [FromBody] TagRequest request, CancellationToken cancellationToken)
@@ -24,7 +24,7 @@ public sealed class EntityTagsController(CaselogDbContext dbContext, TaggingServ
         var tagsToAdd = request.Tags ?? Array.Empty<string>();
         var addedTags = await taggingService.AddTagsAsync(normalizedEntityType, id, tagsToAdd, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
-        await UpdatePageSearchIndexIfNeededAsync(normalizedEntityType, id, cancellationToken);
+        await UpdateSearchIndexIfNeededAsync(normalizedEntityType, id, cancellationToken);
 
         return Ok(new ApiEnvelope<IReadOnlyList<string>>(addedTags));
     }
@@ -46,7 +46,7 @@ public sealed class EntityTagsController(CaselogDbContext dbContext, TaggingServ
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
-        await UpdatePageSearchIndexIfNeededAsync(normalizedEntityType, id, cancellationToken);
+        await UpdateSearchIndexIfNeededAsync(normalizedEntityType, id, cancellationToken);
 
         return Ok(new ApiEnvelope<object>(new { deleted = true }));
     }
@@ -56,19 +56,22 @@ public sealed class EntityTagsController(CaselogDbContext dbContext, TaggingServ
         return entityType.Trim().ToLowerInvariant();
     }
 
-    private async Task UpdatePageSearchIndexIfNeededAsync(string entityType, Guid id, CancellationToken cancellationToken)
+    private async Task UpdateSearchIndexIfNeededAsync(string entityType, Guid id, CancellationToken cancellationToken)
     {
-        if (entityType != "page")
+        if (entityType == "page")
         {
+            var page = await dbContext.Pages.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+            if (page is not null)
+            {
+                await pageSearchIndexService.UpsertAsync(page, cancellationToken);
+            }
+
             return;
         }
 
-        var page = await dbContext.Pages.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
-        if (page is null)
+        if (entityType == "mindmap")
         {
-            return;
+            await mindMapSearchIndexService.UpsertAsync(id, cancellationToken);
         }
-
-        await pageSearchIndexService.UpsertAsync(page, cancellationToken);
     }
 }

@@ -36,6 +36,7 @@ builder.Services.AddScoped<PageSearchIndexService>();
 builder.Services.AddScoped<NoteSearchIndexService>();
 builder.Services.AddScoped<TaggingService>();
 builder.Services.AddScoped<ListEntrySearchIndexService>();
+builder.Services.AddScoped<MindMapSearchIndexService>();
 
 var app = builder.Build();
 
