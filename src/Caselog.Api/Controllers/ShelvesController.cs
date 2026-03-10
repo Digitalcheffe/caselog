@@ -1,6 +1,7 @@
 using Caselog.Api.Data;
 using Caselog.Api.Data.Entities;
 using Caselog.Api.Models;
+using Caselog.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -9,7 +10,7 @@ namespace Caselog.Api.Controllers;
 
 [Authorize]
 [Route("api/shelves")]
-public sealed class ShelvesController(CaselogDbContext dbContext) : BaseApiController
+public sealed class ShelvesController(CaselogDbContext dbContext, TaggingService taggingService) : BaseApiController
 {
     [HttpGet]
     public async Task<ActionResult<ApiEnvelope<PagedResult<ShelfResponse>>>> GetShelves([FromQuery] PaginationQuery query, CancellationToken cancellationToken)
@@ -61,6 +62,7 @@ public sealed class ShelvesController(CaselogDbContext dbContext) : BaseApiContr
         };
 
         dbContext.Shelves.Add(shelf);
+        await taggingService.AddTagsAsync("shelf", shelf.Id, ["type:shelf", "source:manual"], cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         var response = new ShelfResponse(shelf.Id, shelf.Name, shelf.Description, shelf.CreatedAt, shelf.UpdatedAt);

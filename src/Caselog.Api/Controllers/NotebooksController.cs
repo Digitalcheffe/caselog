@@ -1,6 +1,7 @@
 using Caselog.Api.Data;
 using Caselog.Api.Data.Entities;
 using Caselog.Api.Models;
+using Caselog.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -9,7 +10,7 @@ namespace Caselog.Api.Controllers;
 
 [Authorize]
 [Route("api/notebooks")]
-public sealed class NotebooksController(CaselogDbContext dbContext) : BaseApiController
+public sealed class NotebooksController(CaselogDbContext dbContext, TaggingService taggingService) : BaseApiController
 {
     [HttpGet]
     public async Task<ActionResult<ApiEnvelope<PagedResult<NotebookResponse>>>> GetNotebooks([FromQuery] PaginationQuery query, CancellationToken cancellationToken)
@@ -66,6 +67,7 @@ public sealed class NotebooksController(CaselogDbContext dbContext) : BaseApiCon
         };
 
         dbContext.Notebooks.Add(notebook);
+        await taggingService.AddTagsAsync("notebook", notebook.Id, ["type:notebook", "source:manual"], cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         var response = new NotebookResponse(notebook.Id, notebook.ShelfId, notebook.Name, notebook.Description, notebook.CreatedAt, notebook.UpdatedAt);
