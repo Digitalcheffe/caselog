@@ -187,13 +187,6 @@ public sealed class FollowUpsController(CaselogDbContext dbContext, TaggingServi
                     .SingleOrDefaultAsync(cancellationToken);
                 return kase is null ? null : (kase.Name, $"/kases/{entityId}");
             }
-            case "":
-            {
-                var  = await dbContext..AsNoTracking().Where(x => x.Id == entityId && x.UserId == userId)
-                    .Select(x => new { x.Name })
-                    .SingleOrDefaultAsync(cancellationToken);
-                return  is null ? null : (.Name, $"//{entityId}");
-            }
             default:
                 return null;
         }
