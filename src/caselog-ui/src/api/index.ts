@@ -370,3 +370,88 @@ export const attachListToPage = async (listId: string, pageId: string): Promise<
     body: JSON.stringify({ pageId }),
   });
 };
+
+export type MindMapNode = {
+  id: string;
+  mindMapId: string;
+  parentNodeId: string | null;
+  label: string;
+  notes: string | null;
+  sortOrder: number;
+  children: MindMapNode[];
+};
+
+export type MindMap = {
+  id: string;
+  title: string;
+  visibility: "private" | "internal" | "public";
+  publicSlug?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MindMapDetail = MindMap & {
+  rootNode: MindMapNode;
+};
+
+export const getMindMaps = async (): Promise<MindMap[]> => {
+  const response = await apiRequest<PagedResult<MindMap>>("/api/mindmaps?page=1&pageSize=200");
+  return response.items;
+};
+
+export const getMindMap = async (id: string): Promise<MindMapDetail> =>
+  apiRequest<MindMapDetail>(`/api/mindmaps/${id}`);
+
+export const createMindMap = async (title: string): Promise<MindMapDetail> =>
+  apiRequest<MindMapDetail>("/api/mindmaps", {
+    method: "POST",
+    body: JSON.stringify({ title, visibility: "private", publicSlug: null }),
+  });
+
+export const createMindMapNode = async (
+  id: string,
+  body: { parentId: string | null; label: string },
+): Promise<MindMapNode> =>
+  apiRequest<MindMapNode>(`/api/mindmaps/${id}/nodes`, {
+    method: "POST",
+    body: JSON.stringify({
+      parentNodeId: body.parentId,
+      label: body.label,
+      notes: null,
+      sortOrder: 0,
+    }),
+  });
+
+export const deleteMindMapNode = async (id: string, nodeId: string): Promise<void> => {
+  await apiRequest(`/api/mindmaps/${id}/nodes/${nodeId}`, { method: "DELETE" });
+};
+
+export const updateMindMapNode = async (
+  id: string,
+  nodeId: string,
+  body: { parentNodeId: string | null; label: string; notes: string | null; sortOrder: number },
+): Promise<void> => {
+  await apiRequest(`/api/mindmaps/${id}/nodes/${nodeId}`, {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+};
+
+export const updateMindMap = async (id: string, body: { title: string }): Promise<void> => {
+  await apiRequest(`/api/mindmaps/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ title: body.title, visibility: "private", publicSlug: null }),
+  });
+};
+
+export const getPages = async (): Promise<Page[]> => {
+  const response = await apiRequest<PagedResult<ApiPage>>("/api/pages?page=1&pageSize=200");
+  return response.items.map(toPage);
+};
+
+export const attachMindMapToPage = async (mindMapId: string, pageId: string): Promise<void> => {
+  await apiRequest(`/api/pages/${pageId}/mindmaps`, {
+    method: "POST",
+    body: JSON.stringify({ mindMapId, sortOrder: null }),
+  });
+};
