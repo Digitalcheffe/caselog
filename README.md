@@ -5,7 +5,7 @@ Caselog is a self-hosted personal knowledge management system that combines note
 ## Run locally with Docker
 
 1. (Optional) Set `CASELOG_PORT` (defaults to `5000`).
-2. Build and start:
+2. Build and start (uses a managed `caselog-data` volume for SQLite):
    ```bash
    docker compose -f docker/docker-compose.yml up --build
    ```

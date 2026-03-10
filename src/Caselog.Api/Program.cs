@@ -60,7 +60,21 @@ await using (var scope = app.Services.CreateAsyncScope())
             "Cannot initialize schema safely. Ensure migrations are committed and published with the API assembly.");
     }
 
-    await dbContext.Database.MigrateAsync();
+    await EnsureMigrationHistoryForLegacySchemaAsync(dbContext, logger, allMigrations);
+
+    try
+    {
+        await dbContext.Database.MigrateAsync();
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex,
+            "Failed to apply EF Core migrations. DataPath={DataPath}; PendingMigrations=[{PendingMigrations}]",
+            dataPath,
+            string.Join(", ", pendingMigrations));
+        throw;
+    }
+
     await dbContext.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
 
     var missingTables = await GetMissingRequiredTablesAsync(dbContext, ["Users", "UserApiKeys"]);
@@ -107,7 +121,50 @@ await using (var scope = app.Services.CreateAsyncScope())
     }
 }
 
+static async Task EnsureMigrationHistoryForLegacySchemaAsync(
+    CaselogDbContext dbContext,
+    ILogger logger,
+    string[] allMigrations)
+{
+    var appliedMigrations = (await dbContext.Database.GetAppliedMigrationsAsync()).ToArray();
+    if (appliedMigrations.Length > 0)
+    {
+        return;
+    }
+
+    var existingTables = await GetExistingTableNamesAsync(dbContext);
+    var hasLegacySchema = existingTables.Contains("Users") && existingTables.Contains("UserApiKeys");
+    if (!hasLegacySchema)
+    {
+        return;
+    }
+
+    var baselineMigration = allMigrations.Last();
+    var productVersion = dbContext.Model.GetProductVersion();
+
+    logger.LogWarning(
+        "Detected existing SQLite schema without EF migration history. Baseline migration '{MigrationId}' will be recorded before startup migrations.",
+        baselineMigration);
+
+    await dbContext.Database.ExecuteSqlRawAsync(
+        """
+        CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
+            "MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY,
+            "ProductVersion" TEXT NOT NULL
+        );
+        """);
+
+    await dbContext.Database.ExecuteSqlInterpolatedAsync(
+        $"INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ({baselineMigration}, {productVersion});");
+}
+
 static async Task<List<string>> GetMissingRequiredTablesAsync(CaselogDbContext dbContext, string[] requiredTableNames)
+{
+    var existingTables = await GetExistingTableNamesAsync(dbContext);
+    return requiredTableNames.Where(name => !existingTables.Contains(name)).ToList();
+}
+
+static async Task<HashSet<string>> GetExistingTableNamesAsync(CaselogDbContext dbContext)
 {
     await using var connection = dbContext.Database.GetDbConnection();
     if (connection.State != System.Data.ConnectionState.Open)
@@ -129,7 +186,7 @@ static async Task<List<string>> GetMissingRequiredTablesAsync(CaselogDbContext d
         }
     }
 
-    return requiredTableNames.Where(name => !existingTables.Contains(name)).ToList();
+    return existingTables;
 }
 
 app.UseWhen(
