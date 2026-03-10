@@ -69,6 +69,7 @@ import {
 } from "./components/ui";
 import { useRouter } from "./hooks/useRouter";
 import { ThemeProvider, useTheme } from "./hooks/useTheme";
+import { MindMapEditorPage, MindMapsIndexPage } from "./components/mindmaps";
 
 const routes = [
   "/",
@@ -354,6 +355,12 @@ const AppInner = () => {
     }
     case "/search":
       content = <SearchPage results={filtered} />;
+      break;
+    case "/mindmaps":
+      content = <MindMapsIndexPage navigate={navigate} onToast={setToast} />;
+      break;
+    case "/mindmaps/:id":
+      content = params.id ? <MindMapEditorPage id={params.id} onToast={setToast} /> : <EmptyState title="Mind map missing" body="Not found." />;
       break;
     case "/followups":
       content = <FollowUps pages={pages} setPages={setPages} />;
