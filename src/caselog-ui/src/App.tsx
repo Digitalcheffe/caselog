@@ -80,7 +80,7 @@ const AppInner = () => {
       content = <Card><PageHeader title={pathname} subtitle="Feature scaffold for CP4" /></Card>;
   }
 
-  return <AppShell onNavigate={navigate} onSearch={setSearch} searchValue={search} onToggleTheme={toggleTheme} isDark={theme === 'dark'} isAdmin={isAdmin}>{content}{toast && <Toast message={toast} />}</AppShell>;
+  return <AppShell onNavigate={navigate} onSearch={setSearch} searchValue={search} onToggleTheme={toggleTheme} isDark={theme === 'dark'} isAdmin={isAdmin} currentPath={pathname}>{content}{toast && <Toast message={toast} />}</AppShell>;
 };
 
 const Dashboard = ({ pages, onQuickCapture }: { pages: Page[]; onQuickCapture: (value: string) => void }) => <div><PageHeader title="Dashboard" /><CardGrid>{pages.slice(0, 3).map((p) => <Card key={p.id}><MetadataLine>PAGE</MetadataLine><h3>{p.title}</h3></Card>)}</CardGrid><Card><MetadataLine>Open follow-ups <Badge tone="accent">{pages.filter((p) => p.followUp).length}</Badge></MetadataLine></Card><Card><h3>Quick capture</h3><Textarea onBlur={(e) => e.target.value.trim() && onQuickCapture(e.target.value)} /></Card></div>;
@@ -105,7 +105,7 @@ const PageEditor = ({ page, pages, setPages, onSaved }: { page: Page; pages: Pag
     return () => window.clearTimeout(id);
   }, [draft, onSaved, pages, setPages]);
 
-  return <div><MetadataLine>Home / Notebook / {page.title}</MetadataLine><PageHeader title={page.title} /><div className="editor-layout"><Card><Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /><div className="editor" contentEditable suppressContentEditableWarning onInput={(e) => setDraft({ ...draft, content: (e.target as HTMLDivElement).innerText })}>{draft.content}</div></Card><Card><h3>Metadata</h3><TagList tags={draft.tags} /><Select value={draft.visibility} onChange={(e) => setDraft({ ...draft, visibility: e.target.value as Page['visibility'] })}><option value="private">private</option><option value="internal">internal</option><option value="public">public</option></Select><label><Checkbox checked={draft.followUp} onChange={(e) => setDraft({ ...draft, followUp: e.target.checked })} /> Follow-up flag</label><p>Attachments count: {draft.attachments}</p></Card></div></div>;
+  return <div><MetadataLine>Home / Notebook / {page.title}</MetadataLine><PageHeader title={page.title} /><div className="editor-layout"><Card><Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /><div className="editor" contentEditable suppressContentEditableWarning onInput={(e) => setDraft({ ...draft, content: (e.target as HTMLDivElement).innerText })}>{draft.content}</div></Card><div className="page-meta-panel"><Card><h3>Metadata</h3><TagList tags={draft.tags} /><Select value={draft.visibility} onChange={(e) => setDraft({ ...draft, visibility: e.target.value as Page['visibility'] })}><option value="private">private</option><option value="internal">internal</option><option value="public">public</option></Select><label><Checkbox checked={draft.followUp} onChange={(e) => setDraft({ ...draft, followUp: e.target.checked })} /> Follow-up flag</label><p>Attachments count: {draft.attachments}</p></Card></div></div></div>;
 };
 
 const SettingsPage = () => <div><PageHeader title="Settings" /><Card><h3>API keys</h3><Button>Generate</Button></Card><Card><h3>Profile</h3><Input placeholder="Email" /><Input placeholder="Current password" type="password" /></Card><Card><h3>2FA</h3><p>Enroll via QR code flow placeholder.</p></Card></div>;
