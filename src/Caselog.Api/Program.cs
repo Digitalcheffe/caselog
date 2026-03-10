@@ -35,6 +35,7 @@ builder.Services.AddControllers();
 builder.Services.AddScoped<PageSearchIndexService>();
 builder.Services.AddScoped<NoteSearchIndexService>();
 builder.Services.AddScoped<TaggingService>();
+builder.Services.AddScoped<ListEntrySearchIndexService>();
 
 var app = builder.Build();
 
