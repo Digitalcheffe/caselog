@@ -60,20 +60,7 @@ await using (var scope = app.Services.CreateAsyncScope())
             "Cannot initialize schema safely. Ensure migrations are committed and published with the API assembly.");
     }
 
-    await EnsureMigrationHistoryForLegacySchemaAsync(dbContext, logger, allMigrations);
-
-    try
-    {
-        await dbContext.Database.MigrateAsync();
-    }
-    catch (Exception ex)
-    {
-        logger.LogError(ex,
-            "Failed to apply EF Core migrations. DataPath={DataPath}; PendingMigrations=[{PendingMigrations}]",
-            dataPath,
-            string.Join(", ", pendingMigrations));
-        throw;
-    }
+    await ApplyMigrationsWithRecoveryAsync(dbContext, logger, dataPath, pendingMigrations);
 
     await dbContext.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
 
@@ -121,42 +108,70 @@ await using (var scope = app.Services.CreateAsyncScope())
     }
 }
 
-static async Task EnsureMigrationHistoryForLegacySchemaAsync(
+static async Task ApplyMigrationsWithRecoveryAsync(
     CaselogDbContext dbContext,
     ILogger logger,
-    string[] allMigrations)
+    string dataPath,
+    string[] pendingMigrations)
 {
+    try
+    {
+        await dbContext.Database.MigrateAsync();
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex,
+            "Failed to apply EF Core migrations. DataPath={DataPath}; PendingMigrations=[{PendingMigrations}]",
+            dataPath,
+            string.Join(", ", pendingMigrations));
+        throw;
+    }
+
+    var missingTablesAfterMigrate = await GetMissingRequiredTablesAsync(dbContext, ["Users", "UserApiKeys"]);
+    if (missingTablesAfterMigrate.Count == 0)
+    {
+        return;
+    }
+
     var appliedMigrations = (await dbContext.Database.GetAppliedMigrationsAsync()).ToArray();
-    if (appliedMigrations.Length > 0)
+    if (appliedMigrations.Length == 0)
     {
         return;
     }
 
     var existingTables = await GetExistingTableNamesAsync(dbContext);
-    var hasLegacySchema = existingTables.Contains("Users") && existingTables.Contains("UserApiKeys");
-    if (!hasLegacySchema)
+    var hasDomainTables = existingTables.Any(name => !string.Equals(name, "__EFMigrationsHistory", StringComparison.OrdinalIgnoreCase));
+    if (hasDomainTables)
     {
         return;
     }
 
-    var baselineMigration = allMigrations.Last();
-    var productVersion = dbContext.Model.GetProductVersion();
-
     logger.LogWarning(
-        "Detected existing SQLite schema without EF migration history. Baseline migration '{MigrationId}' will be recorded before startup migrations.",
-        baselineMigration);
+        "Detected migration history entries without domain tables. Recreating SQLite database file and reapplying migrations. AppliedMigrations=[{AppliedMigrations}]",
+        string.Join(", ", appliedMigrations));
 
-    await dbContext.Database.ExecuteSqlRawAsync(
-        """
-        CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" (
-            "MigrationId" TEXT NOT NULL CONSTRAINT "PK___EFMigrationsHistory" PRIMARY KEY,
-            "ProductVersion" TEXT NOT NULL
-        );
-        """);
+    await dbContext.DisposeAsync();
 
-    await dbContext.Database.ExecuteSqlInterpolatedAsync(
-        $"INSERT OR IGNORE INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") VALUES ({baselineMigration}, {productVersion});");
+    if (File.Exists(dataPath))
+    {
+        File.Delete(dataPath);
+    }
+
+    var recoveryOptions = new DbContextOptionsBuilder<CaselogDbContext>()
+        .UseSqlite($"Data Source={dataPath}")
+        .Options;
+
+    await using var recoveryDbContext = new CaselogDbContext(recoveryOptions);
+    await recoveryDbContext.Database.MigrateAsync();
+
+    var missingTablesAfterRecovery = await GetMissingRequiredTablesAsync(recoveryDbContext, ["Users", "UserApiKeys"]);
+    if (missingTablesAfterRecovery.Count > 0)
+    {
+        throw new InvalidOperationException(
+            $"Failed to rebuild schema from migrations. Required tables are still missing: {string.Join(", ", missingTablesAfterRecovery)}.");
+    }
 }
+
 
 static async Task<List<string>> GetMissingRequiredTablesAsync(CaselogDbContext dbContext, string[] requiredTableNames)
 {
