@@ -538,6 +538,10 @@ CASELOG_DIGEST_JOB_TIME=08:00
 
 ---
 
+
+## Package Management
+When adding npm packages, add them to package.json and also run `npm install` in `src/caselog-ui/` to update package-lock.json before committing. The Docker build uses `npm install` (not `npm ci`) to handle cases where the lockfile is out of sync, but keeping the lockfile updated is still best practice.
+
 ## Testing
 
 - Unit tests: xUnit for service layer logic
