@@ -17,7 +17,7 @@ export const PageHeader = ({ title, subtitle, actions }: { title: string; subtit
   <header className="page-header"><div><h1>{title}</h1>{subtitle ? <p>{subtitle}</p> : null}</div>{actions}</header>
 );
 
-export const MetadataLine = ({ children }: PropsWithChildren) => <p className="meta-line">{children}</p>;
+export const MetadataLine = ({ children, className }: PropsWithChildren<{ className?: string }>) => <p className={`meta-line ${className ?? ''}`.trim()}>{children}</p>;
 export const TagList = ({ tags }: { tags: string[] }) => <div className="tag-list">{tags.map((tag) => <span key={tag} className="tag">{tag}</span>)}</div>;
 export const EmptyState = ({ title, body }: { title: string; body: string }) => <Card><h3>{title}</h3><p className="muted">{body}</p></Card>;
 export const Badge = ({ children, tone = 'neutral' }: PropsWithChildren<{ tone?: 'neutral' | 'accent' | 'danger' | 'success' | 'warning' }>) => <span className={`badge badge-${tone}`}>{children}</span>;
