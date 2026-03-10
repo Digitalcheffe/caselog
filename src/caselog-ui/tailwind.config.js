@@ -1,7 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
-  darkMode: ['class', '[data-theme="dark"]'],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
@@ -11,7 +11,13 @@ export default {
         border: 'var(--color-border)',
         primary: 'var(--color-text-primary)',
         secondary: 'var(--color-text-secondary)',
-        accent: 'var(--color-accent)'
+        muted: 'var(--color-text-muted)',
+        accent: 'var(--color-accent)',
+        'accent-hover': 'var(--color-accent-hover)',
+        'accent-subtle': 'var(--color-accent-subtle)',
+        success: 'var(--color-success)',
+        warning: 'var(--color-warning)',
+        danger: 'var(--color-danger)'
       }
     }
   },
