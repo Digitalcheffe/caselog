@@ -141,7 +141,7 @@ public partial class InitialCreate : Migration
             constraints: table =>
             {
                 table.PrimaryKey("PK_Notebooks", x => x.Id);
-                table.ForeignKey("FK_Notebooks_Shelves_ShelfId", x => x.ShelfId, "Shelves", "Id", onDelete: ReferentialAction.SetNull);
+                table.ForeignKey("FK_Notebooks_Shelves_ShelfId", x => x.ShelfId, "Shelves", "Id", onDelete: ReferentialAction.Cascade);
             });
 
         migrationBuilder.CreateTable(
@@ -225,7 +225,7 @@ public partial class InitialCreate : Migration
             constraints: table =>
             {
                 table.PrimaryKey("PK_Pages", x => x.Id);
-                table.ForeignKey("FK_Pages_Notebooks_NotebookId", x => x.NotebookId, "Notebooks", "Id", onDelete: ReferentialAction.SetNull);
+                table.ForeignKey("FK_Pages_Notebooks_NotebookId", x => x.NotebookId, "Notebooks", "Id", onDelete: ReferentialAction.Cascade);
             });
 
         migrationBuilder.CreateTable(

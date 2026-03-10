@@ -49,7 +49,7 @@ public class CaselogDbContext(DbContextOptions<CaselogDbContext> options) : DbCo
         modelBuilder.Entity<Notebook>(entity =>
         {
             entity.HasKey(x => x.Id);
-            entity.HasOne(x => x.Shelf).WithMany(x => x.Notebooks).HasForeignKey(x => x.ShelfId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.Shelf).WithMany(x => x.Notebooks).HasForeignKey(x => x.ShelfId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Page>(entity =>
@@ -57,7 +57,7 @@ public class CaselogDbContext(DbContextOptions<CaselogDbContext> options) : DbCo
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Visibility).HasConversion<string>();
             entity.HasIndex(x => x.PublicSlug).IsUnique().HasFilter("\"PublicSlug\" IS NOT NULL");
-            entity.HasOne(x => x.Notebook).WithMany(x => x.Pages).HasForeignKey(x => x.NotebookId).OnDelete(DeleteBehavior.SetNull);
+            entity.HasOne(x => x.Notebook).WithMany(x => x.Pages).HasForeignKey(x => x.NotebookId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<Tag>(entity =>

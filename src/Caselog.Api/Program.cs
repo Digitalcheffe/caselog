@@ -31,6 +31,8 @@ builder.Services
     .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyAuthenticationDefaults.Scheme, _ => { });
 
 builder.Services.AddAuthorization();
+builder.Services.AddControllers();
+builder.Services.AddScoped<PageSearchIndexService>();
 
 var app = builder.Build();
 
@@ -155,6 +157,9 @@ app.UseWhen(
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
+app.UseAuthorization();
+
+app.MapControllers();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/public/{**slug}", (string slug) => Results.NotFound(new { slug }));
 
