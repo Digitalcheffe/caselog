@@ -13,9 +13,8 @@ import {
   createList,
   createListEntry,
   createListField,
-  createNotebookPage,
-  createShelf,
-  createShelfNotebook,
+  createKase,
+  createKaseLog,
   disableTwoFactor,
   enableTwoFactor,
   getApiKeys,
@@ -32,9 +31,8 @@ import {
   getListEntries,
   getListFields,
   getLists,
-  getNotebookPages,
-  getShelfNotebooks,
-  getShelves,
+  getKaseLogs,
+  getKases,
   getPages,
   getRecentPages,
   getFollowUpPages,
@@ -47,7 +45,6 @@ import {
   type Kase,
   type Log,
   type ProfileResponse,
-  type Kase,
   toggleAdminUserStatus,
   updateAdminUser,
   updateEntry,
@@ -80,12 +77,12 @@ import {
 import { useRouter } from "./hooks/useRouter";
 import { ThemeProvider, useTheme } from "./hooks/useTheme";
 import { MindMapEditorPage, MindMapsIndexPage } from "./components/mindmaps";
+import LooseEnds from "./pages/loose-ends";
 
 const routes = [
   "/",
   "/dashboard",
   "/kases",
-  "/kases/:id",
   "/kases/:id",
   "/logs/:id",
   "/search",
@@ -94,7 +91,7 @@ const routes = [
   "/mindmaps",
   "/mindmaps/:id",
   "/followups",
-  "/unorganized",
+  "/loose-ends",
   "/settings",
   "/settings/profile",
   "/admin/users",
@@ -111,9 +108,8 @@ const AppInner = () => {
     new URLSearchParams(window.location.search).get("q") ?? "",
   );
   const [debouncedSearch, setDebouncedSearch] = useState(search);
-  const [logs, setPages] = useState<Log[]>([]);
-  const [kases, setShelves] = useState<(Kase & { notebookCount?: number })[]>([]);
-  const [kases, setNotebooks] = useState<Kase[]>([]);
+  const [logs, setLogs] = useState<Log[]>([]);
+  const [kases, setKases] = useState<Kase[]>([]);
   const [lists, setLists] = useState<ListType[]>([]);
   const [listFields, setListFields] = useState<ListTypeField[]>([]);
   const [listEntries, setListEntries] = useState<ListEntry[]>([]);
@@ -156,56 +152,32 @@ const AppInner = () => {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const loadShelves = async () => {
+    const loadKases = async () => {
       try {
-        const fetchedShelves = await getShelves();
-        setShelves(fetchedShelves);
+        const fetchedKases = await getKases();
+        setKases(fetchedKases);
       } catch (error) {
         const apiError = error as ApiError;
         setToast(`Error ${apiError.status}: ${apiError.message}`);
       }
     };
 
-    void loadShelves();
+    void loadKases();
   }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    void getPages().then(setPages).catch((error: ApiError) => setToast(`Error ${error.status}: ${error.message}`));
+    void getPages().then(setLogs).catch((error: ApiError) => setToast(`Error ${error.status}: ${error.message}`));
   }, [isAuthenticated]);
 
   useEffect(() => {
     if (currentRoute !== "/kases/:id" || !params.id) return;
-
-    const loadNotebooks = async () => {
-      try {
-        setNotebooks(await getShelfNotebooks(params.id));
-      } catch (error) {
-        const apiError = error as ApiError;
-        setToast(`Error ${apiError.status}: ${apiError.message}`);
-      }
-    };
-
-    void loadNotebooks();
-  }, [currentRoute, params.id]);
-
-  useEffect(() => {
-    if (currentRoute !== "/kases/:id" || !params.id) return;
-
-    const loadPages = async () => {
-      try {
-        const notebookPages = await getNotebookPages(params.id);
-        setPages((previous) => {
-          const remaining = previous.filter((page) => page.notebookId !== params.id);
-          return [...remaining, ...notebookPages];
-        });
-      } catch (error) {
-        const apiError = error as ApiError;
-        setToast(`Error ${apiError.status}: ${apiError.message}`);
-      }
-    };
-
-    void loadPages();
+    void getKaseLogs(params.id)
+      .then((items) => setLogs((prev) => {
+        const others = prev.filter((p) => p.kaseId !== params.id);
+        return [...others, ...items];
+      }))
+      .catch((error: ApiError) => setToast(`Error ${error.status}: ${error.message}`));
   }, [currentRoute, params.id]);
   useEffect(() => {
     if (currentRoute !== "/lists") return;
@@ -259,7 +231,7 @@ const AppInner = () => {
       updatedAt: now,
     };
     const next = [...logs, nextItem];
-    setPages(next);
+    setLogs(next);
     setToast("Quick capture saved");
   };
 
@@ -279,46 +251,24 @@ const AppInner = () => {
       break;
     case "/kases":
       content = (
-        <ShelvesPage
-          kases={kases}
+        <KasesPage
           kases={kases}
           navigate={navigate}
-          onShelvesChange={setShelves}
+          onKasesChange={setKases}
           onToast={setToast}
         />
       );
       break;
     case "/kases/:id": {
       const kase = kases.find((item) => item.id === params.id);
-      const shelfNotebooks = kases.filter((item) => item.shelfId === params.id);
+      const kaseLogs = logs.filter((p) => p.kaseId === params.id);
       content = kase ? (
-        <ShelfDetailPage
+        <KaseDetailPage
           kase={kase}
-          kases={shelfNotebooks}
-          logs={logs}
+          logs={kaseLogs}
           navigate={navigate}
-          onNotebookCreated={(kase) =>
-            setNotebooks((previous) => [...previous.filter((item) => item.id !== kase.id), kase])
-          }
-          onToast={setToast}
-        />
-      ) : (
-        <EmptyState title="Kase missing" body="Not found." />
-      );
-      break;
-    }
-    case "/kases/:id": {
-      const kase = kases.find((item) => item.id === params.id);
-      const notebookPages = logs.filter((page) => page.notebookId === params.id);
-      const kase = kases.find((item) => item.id === kase?.shelfId);
-      content = kase ? (
-        <NotebookDetailPage
-          kase={kase}
-          kase={kase}
-          logs={notebookPages}
-          navigate={navigate}
-          onPageCreated={(page) =>
-            setPages((previous) => [...previous.filter((item) => item.id !== page.id), page])
+          onLogCreated={(log) =>
+            setLogs((prev) => [...prev.filter((p) => p.id !== log.id), log])
           }
           onToast={setToast}
         />
@@ -333,7 +283,7 @@ const AppInner = () => {
         <PageEditor
           page={page}
           logs={logs}
-          setPages={setPages}
+          setPages={setLogs}
           navigate={navigate}
           onToast={setToast}
         />
@@ -386,17 +336,8 @@ const AppInner = () => {
     case "/followups":
       content = <FollowUps />;
       break;
-    case "/unorganized":
-      content = (
-        <div>
-          <PageHeader title="Unorganized" />
-          {logs
-            .filter((p) => !p.notebookId)
-            .map((p) => (
-              <Card key={p.id}>{p.title}</Card>
-            ))}
-        </div>
-      );
+    case "/loose-ends":
+      content = <LooseEnds navigate={navigate} />;
       break;
     case "/settings":
     case "/settings/profile":
@@ -622,7 +563,7 @@ const SearchPage = ({ query }: { query: string }) => {
         <CardGrid>
           {results.map((r) => (
             <Card key={r.id}>
-              <MetadataLine>{r.notebookId ? "kase" : "unorganized"}</MetadataLine>
+              <MetadataLine>{r.kaseId ? "kase" : "loose end"}</MetadataLine>
               <h3>{r.title}</h3>
               <p>{r.content.slice(0, 90)}</p>
               <TagList tags={r.tags} />
@@ -1064,29 +1005,27 @@ const CellEditor = ({
     />
   );
 };
-const ShelvesPage = ({
-  kases,
+const KasesPage = ({
   kases,
   navigate,
-  onShelvesChange,
+  onKasesChange,
   onToast,
 }: {
-  kases: (Kase & { notebookCount?: number })[];
   kases: Kase[];
   navigate: (path: string) => void;
-  onShelvesChange: (value: (Kase & { notebookCount?: number })[]) => void;
+  onKasesChange: (value: Kase[]) => void;
   onToast: (message: string) => void;
 }) => {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
 
-  const createNewShelf = async () => {
+  const createNewKase = async () => {
     const shelfName = name.trim() || "Untitled Kase";
     const shelfDescription = description.trim();
 
     try {
-      const created = await createShelf({ name: shelfName, description: shelfDescription });
-      onShelvesChange([...kases, { ...created, notebookCount: 0 }]);
+      const created = await createKase({ name: shelfName, description: shelfDescription });
+      onKasesChange([...kases, created]);
       setName("");
       setDescription("");
       onToast("Kase created");
@@ -1111,7 +1050,7 @@ const ShelvesPage = ({
               value={description}
               onChange={(event) => setDescription(event.target.value)}
             />
-            <Button onClick={() => void createNewShelf()}>New Kase</Button>
+            <Button onClick={() => void createNewKase()}>New Kase</Button>
           </div>
         }
       />
@@ -1120,9 +1059,6 @@ const ShelvesPage = ({
           <Card key={kase.id}>
             <h3>{kase.name}</h3>
             <p>{kase.description || "No description"}</p>
-            <MetadataLine>
-              {(kase.notebookCount ?? kases.filter((item) => item.shelfId === kase.id).length).toString()} kases
-            </MetadataLine>
             <Button onClick={() => navigate(`/kases/${kase.id}`)}>Open</Button>
           </Card>
         ))}
@@ -1131,77 +1067,23 @@ const ShelvesPage = ({
   );
 };
 
-const ShelfDetailPage = ({
-  kase,
-  kases,
-  logs,
-  navigate,
-  onNotebookCreated,
-  onToast,
-}: {
-  kase: Kase;
-  kases: Kase[];
-  logs: Log[];
-  navigate: (path: string) => void;
-  onNotebookCreated: (kase: Kase) => void;
-  onToast: (message: string) => void;
-}) => {
-  const createNewNotebook = async () => {
-    try {
-      const created = await createShelfNotebook(kase.id, { name: "Untitled" });
-      onNotebookCreated(created);
-      onToast("Kase created");
-    } catch {
-      onToast("Failed to create kase");
-    }
-  };
-
-  return (
-    <div>
-      <PageHeader
-        title={kase.name}
-        subtitle={kase.description}
-        actions={<Button onClick={() => void createNewNotebook()}>New Kase</Button>}
-      />
-      <CardGrid>
-        {kases.map((kase) => {
-          const pageCount = kase.pageCount ?? logs.filter((page) => page.notebookId === kase.id).length;
-          return (
-            <Card key={kase.id}>
-              <h3>{kase.name}</h3>
-              <p>{kase.description || "No description"}</p>
-              <MetadataLine>Kase</MetadataLine>
-              <div className="row">
-                <Badge>{pageCount} logs</Badge>
-              </div>
-              <Button onClick={() => navigate(`/kases/${kase.id}`)}>Open</Button>
-            </Card>
-          );
-        })}
-      </CardGrid>
-    </div>
-  );
-};
-
-const NotebookDetailPage = ({
-  kase,
+const KaseDetailPage = ({
   kase,
   logs,
   navigate,
-  onPageCreated,
+  onLogCreated,
   onToast,
 }: {
   kase: Kase;
-  kase?: Kase & { notebookCount?: number };
   logs: Log[];
   navigate: (path: string) => void;
-  onPageCreated: (page: Log) => void;
+  onLogCreated: (log: Log) => void;
   onToast: (message: string) => void;
 }) => {
   const createNewPage = async () => {
     try {
-      const created = await createNotebookPage(kase.id, { title: "Untitled" });
-      onPageCreated(created);
+      const created = await createKaseLog(kase.id, { title: "Untitled" });
+      onLogCreated(created);
       navigate(`/logs/${created.id}`);
     } catch {
       onToast("Failed to create page");
@@ -1210,19 +1092,6 @@ const NotebookDetailPage = ({
 
   return (
     <div>
-      <MetadataLine>
-        {kase ? (
-          <button className="inline-link" type="button" onClick={() => navigate(`/kases/${kase.id}`)}>
-            {kase.name}
-          </button>
-        ) : (
-          "Kase"
-        )}{" "}
-        &gt;
-        <button className="inline-link" type="button" onClick={() => navigate(`/kases/${kase.id}`)}>
-          {kase.name}
-        </button>
-      </MetadataLine>
       <PageHeader
         title={kase.name}
         actions={<Button onClick={() => void createNewPage()}>New Log</Button>}
@@ -1231,8 +1100,8 @@ const NotebookDetailPage = ({
         <Card className="empty-state-card">
           <div className="empty-state-icon" aria-hidden>📄</div>
           <h3>No logs yet</h3>
-          <p className="muted">Create your first page</p>
-          <Button onClick={() => void createNewPage()}>Create your first page</Button>
+          <p className="muted">Create your first log</p>
+          <Button onClick={() => void createNewPage()}>Create your first log</Button>
         </Card>
       ) : (
         <CardGrid>
@@ -1439,7 +1308,7 @@ const PageEditor = ({
       setPages(nextPages);
       setConfirmDeleteOpen(false);
       navigate(
-        draft.notebookId ? `/kases/${draft.notebookId}` : "/unorganized",
+        draft.kaseId ? `/kases/${draft.kaseId}` : "/loose-ends",
       );
     } catch {
       onToast("Delete failed");

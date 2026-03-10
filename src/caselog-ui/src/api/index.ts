@@ -12,15 +12,12 @@ export type Log = {
   attachments: Attachment[];
   createdAt: string;
   updatedAt: string;
-  notebookId?: string;
+  kaseId?: string;
 };
-export type Kase = { id: string; name: string; description: string };
 export type Kase = {
   id: string;
-  shelfId: string;
   name: string;
   description?: string;
-  pageCount?: number;
 };
 
 export type ListFieldType = "text" | "number" | "boolean" | "date" | "select";
@@ -106,7 +103,7 @@ type ApiPage = {
   attachments?: Attachment[];
   createdAt?: string;
   updatedAt?: string;
-  notebookId?: string;
+  kaseId?: string;
 };
 
 const toPage = (page: ApiPage): Log => {
@@ -121,7 +118,7 @@ const toPage = (page: ApiPage): Log => {
     attachments: page.attachments ?? [],
     createdAt: page.createdAt ?? now,
     updatedAt: page.updatedAt ?? now,
-    notebookId: page.notebookId,
+    kaseId: page.kaseId,
   };
 };
 
@@ -153,95 +150,6 @@ export const deletePage = async (id: string): Promise<void> => {
   await apiRequest<unknown>(`/api/logs/${id}`, { method: "DELETE" });
 };
 
-
-export const getNotebookPages = async (notebookId: string): Promise<Log[]> => {
-  const response = await apiRequest<PagedResult<ApiPage>>(`/api/kases/${notebookId}/logs`);
-  return response.items.map(toPage);
-};
-
-export const createNotebookPage = async (
-  notebookId: string,
-  body: { title: string },
-): Promise<Log> => {
-  const response = await apiRequest<ApiPage>(`/api/kases/${notebookId}/logs`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-  return toPage(response);
-};
-
-type ApiNotebook = {
-  id: string;
-  shelfId: string;
-  name?: string;
-  title?: string;
-  description?: string;
-  pageCount?: number;
-};
-
-const toNotebook = (kase: ApiNotebook): Kase => ({
-  id: kase.id,
-  shelfId: kase.shelfId,
-  name: kase.name ?? kase.title ?? "Untitled Kase",
-  description: kase.description,
-  pageCount: kase.pageCount,
-});
-
-export const getShelfNotebooks = async (shelfId: string): Promise<Kase[]> => {
-  const response = await apiRequest<PagedResult<ApiNotebook>>(`/api/kases/${shelfId}/kases`);
-  return response.items.map(toNotebook);
-};
-
-export const createShelfNotebook = async (
-  shelfId: string,
-  body: { name: string },
-): Promise<Kase> => {
-  const response = await apiRequest<ApiNotebook>(`/api/kases`, {
-    method: "POST",
-    body: JSON.stringify({ shelfId, name: body.name, description: null }),
-  });
-  return toNotebook(response);
-};
-
-type ApiShelf = {
-  id: string;
-  name: string;
-  description?: string;
-  notebookCount?: number;
-};
-
-export const getShelves = async (): Promise<(Kase & { notebookCount?: number })[]> => {
-  const response = await apiRequest<PagedResult<ApiShelf>>("/api/kases?page=1&pageSize=200");
-  return response.items.map((kase) => ({
-    id: kase.id,
-    name: kase.name,
-    description: kase.description ?? "",
-    notebookCount: kase.notebookCount,
-  }));
-};
-
-export const createShelf = async (body: {
-  name: string;
-  description: string;
-}): Promise<Kase> => {
-  const response = await apiRequest<ApiShelf>("/api/kases", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-  return {
-    id: response.id,
-    name: response.name,
-    description: response.description ?? "",
-  };
-};
-
-
-export const deleteShelf = async (id: string): Promise<void> => {
-  await apiRequest<unknown>(`/api/kases/${id}`, { method: "DELETE" });
-};
-
-export const getNotebook = async (id: string): Promise<Kase> =>
-  toNotebook(await apiRequest<ApiNotebook>(`/api/kases/${id}`));
 
 export const getPage = async (id: string): Promise<Log> => toPage(await apiRequest<ApiPage>(`/api/logs/${id}`));
 
@@ -369,6 +277,40 @@ export const getPages = async (query = "page=1&pageSize=200"): Promise<Log[]> =>
   const response = await apiRequest<PagedResult<ApiPage>>(`/api/logs?${query}`);
   return response.items.map(toPage);
 };
+
+export const getKases = async (): Promise<Kase[]> => {
+  const response = await apiRequest<{ items: Array<{ id: string; name: string; description?: string }> }>("/api/kases?page=1&pageSize=200");
+  return response.items.map((k) => ({ id: k.id, name: k.name, description: k.description }));
+};
+
+export const createKase = async (body: { name: string; description?: string }): Promise<Kase> =>
+  apiRequest<Kase>("/api/kases", { method: "POST", body: JSON.stringify(body) });
+
+export const deleteKase = async (id: string): Promise<void> => {
+  await apiRequest<unknown>(`/api/kases/${id}`, { method: "DELETE" });
+};
+
+export const getKase = async (id: string): Promise<Kase> =>
+  apiRequest<Kase>(`/api/kases/${id}`);
+
+export const getKaseLogs = async (kaseId: string): Promise<Log[]> => {
+  const response = await apiRequest<{ items: ApiPage[] }>(`/api/kases/${kaseId}/logs?page=1&pageSize=200`);
+  return response.items.map(toPage);
+};
+
+export const createKaseLog = async (kaseId: string, body: { title: string }): Promise<Log> =>
+  toPage(await apiRequest<ApiPage>(`/api/kases/${kaseId}/logs`, { method: "POST", body: JSON.stringify(body) }));
+
+export const getLooseEnds = async (): Promise<Log[]> => {
+  const response = await apiRequest<{ items: ApiPage[] }>("/api/logs?unassigned=true&page=1&pageSize=200");
+  return response.items.map(toPage);
+};
+
+export const createLooseEndLog = async (): Promise<Log> =>
+  toPage(await apiRequest<ApiPage>("/api/logs", { method: "POST", body: JSON.stringify({ title: "Untitled" }) }));
+
+export const updateLog = async (id: string, body: Partial<Pick<Log, "title" | "content" | "visibility" | "followUp" | "tags"> & { kaseId?: string | null }>): Promise<Log> =>
+  toPage(await apiRequest<ApiPage>(`/api/logs/${id}`, { method: "PUT", body: JSON.stringify(body) }));
 
 export const getProfile = async (): Promise<ProfileResponse> => apiRequest<ProfileResponse>("/api/auth/me");
 

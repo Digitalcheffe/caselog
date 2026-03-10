@@ -23,11 +23,12 @@ const navItems: LinkItem[] = [
 
 const sidebarItems: LinkItem[] = [
   { to: '/kases', label: 'Kases' },
+  { to: '/loose-ends', label: 'Loose Ends' },
   { to: '/lists', label: 'Lists' },
   { to: '/mindmaps', label: 'Mind Maps' },
-  { to: '/notes', label: 'Notes' },
-  { to: '/unorganized', label: 'Unorganized' },
-  { to: '/admin/users', label: 'Admin Users' }
+  { to: '/followups', label: 'Follow-ups' },
+  { to: '/settings', label: 'Settings' },
+  { to: '/admin/users', label: 'Admin' },
 ];
 
 const NavItem = ({ item, currentPath, onNavigate }: { item: LinkItem; currentPath: string; onNavigate: (path: string) => void }) => {
