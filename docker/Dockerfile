@@ -3,7 +3,8 @@
 FROM node:20-alpine AS ui-build
 WORKDIR /src/ui
 COPY src/caselog-ui/package.json ./
-RUN npm install
+COPY src/caselog-ui/package-lock.json ./
+RUN npm ci
 COPY src/caselog-ui/ ./
 RUN npm run build
 
@@ -15,7 +16,7 @@ WORKDIR /src
 COPY . ./
 RUN dotnet restore ./src/Caselog.Api/Caselog.Api.csproj
 COPY --from=ui-build /src/ui/dist/ ./src/Caselog.Api/wwwroot/
-RUN dotnet publish ./src/Caselog.Api/Caselog.Api.csproj -c Release -o /app/publish /p:UseAppHost=false
+RUN dotnet publish ./src/Caselog.Api/Caselog.Api.csproj -c Release -o /app/publish /p:UseAppHost=false --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-alpine AS final
 WORKDIR /app

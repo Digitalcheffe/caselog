@@ -53,6 +53,13 @@ await using (var scope = app.Services.CreateAsyncScope())
         string.Join(", ", allMigrations),
         string.Join(", ", pendingMigrations));
 
+    if (allMigrations.Length == 0)
+    {
+        throw new InvalidOperationException(
+            "No EF Core migrations were discovered at runtime. " +
+            "Cannot initialize schema safely. Ensure migrations are committed and published with the API assembly.");
+    }
+
     await dbContext.Database.MigrateAsync();
     await dbContext.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
 

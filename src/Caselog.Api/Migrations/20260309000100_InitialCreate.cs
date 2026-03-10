@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace Caselog.Api.Data.Migrations;
+namespace Caselog.Api.Migrations;
 
 [DbContext(typeof(CaselogDbContext))]
 [Migration("20260309000100_InitialCreate")]
