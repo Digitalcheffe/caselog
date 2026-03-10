@@ -2,7 +2,7 @@
 FROM node:20-alpine AS ui-build
 WORKDIR /src/ui
 COPY src/caselog-ui/package*.json ./
-RUN npm ci
+RUN npm ci || (echo "ERROR: package-lock.json is out of sync with package.json. Run 'npm install' in src/caselog-ui/ and commit the updated lockfile." && exit 1)
 COPY src/caselog-ui/ ./
 RUN npm run build
 
