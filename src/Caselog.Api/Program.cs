@@ -11,6 +11,8 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Serilog;
 using Serilog.Events;
+using MsLogger = Microsoft.Extensions.Logging.ILogger;
+using SerilogLogger = Serilog.ILogger;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,7 +30,7 @@ if (!string.IsNullOrWhiteSpace(logDirectory))
     Directory.CreateDirectory(logDirectory);
 }
 
-Log.Logger = new LoggerConfiguration()
+SerilogLogger configuredLogger = new LoggerConfiguration()
     .MinimumLevel.Debug()
     .MinimumLevel.Override("Microsoft", LogEventLevel.Information)
     .Enrich.FromLogContext()
@@ -39,6 +41,8 @@ Log.Logger = new LoggerConfiguration()
         retainedFileCountLimit: 30,
         restrictedToMinimumLevel: LogEventLevel.Debug)
     .CreateLogger();
+
+Log.Logger = configuredLogger;
 
 builder.Host.UseSerilog();
 
@@ -116,7 +120,7 @@ var startupChecks = new StartupChecks(
 await using (var scope = app.Services.CreateAsyncScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<CaselogDbContext>();
-    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    var logger = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Program>>();
 
     var migrationsAssembly = dbContext.GetService<IMigrationsAssembly>();
     var allMigrations = migrationsAssembly.Migrations.Keys.OrderBy(x => x).ToArray();
@@ -206,7 +210,7 @@ LogStartupBanner(app.Logger, startupChecks, listeningUrl);
 
 static async Task ApplyMigrationsWithRecoveryAsync(
     CaselogDbContext dbContext,
-    ILogger logger,
+    MsLogger logger,
     string dataPath,
     string[] pendingMigrations)
 {
