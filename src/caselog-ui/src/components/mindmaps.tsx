@@ -39,7 +39,7 @@ const flattenNodes = (root: MindMapNode): MindMapNode[] => {
 };
 
 const countNodes = (node: MindMapNode): number =>
-  1 + node.children.reduce((sum, child) => sum + countNodes(child), 0);
+  1 + node.children.reduce((sum: number, child: MindMapNode) => sum + countNodes(child), 0);
 
 const buildInitialPositions = (nodes: MindMapNode[]) => {
   const byParent = new Map<string | null, MindMapNode[]>();
@@ -72,7 +72,7 @@ export const MindMapsIndexPage = ({ navigate, onToast }: { navigate: (path: stri
       try {
         const maps = await getMindMaps();
         const withCounts = await Promise.all(
-          maps.map(async (map) => {
+          maps.map(async (map: MindMap) => {
             const detail = await getMindMap(map.id);
             return { ...map, nodeCount: countNodes(detail.rootNode) };
           }),
