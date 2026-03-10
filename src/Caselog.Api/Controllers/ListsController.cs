@@ -266,7 +266,11 @@ public sealed class ListsController(CaselogDbContext dbContext, TaggingService t
         var validationError = ValidateAndApplyValues(entry.Id, fields, request.Values ?? new Dictionary<Guid, JsonElement?>(), dbContext.ListEntryFieldValues);
         if (validationError is not null)
         {
-            return base.ValidationProblem(new Dictionary<string, string[]> { ["values"] = [validationError] });
+            return base.ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]> { ["values"] = [validationError] })
+            {
+                Title = "One or more validation errors occurred.",
+                Status = StatusCodes.Status400BadRequest
+            });
         }
 
         await taggingService.AddTagsAsync("listentry", entry.Id, ["type:listentry", "source:manual"], cancellationToken);
@@ -293,17 +297,18 @@ public sealed class ListsController(CaselogDbContext dbContext, TaggingService t
         {
             requestValues.TryGetValue(field.Id, out var element);
             var hasValue = element.HasValue;
-            if (field.Required && (!hasValue || element.Value.ValueKind == JsonValueKind.Null))
+            var elementValue = hasValue ? element.GetValueOrDefault() : default;
+            if (field.Required && (!hasValue || elementValue.ValueKind == JsonValueKind.Null))
             {
                 return $"Field '{field.FieldName}' is required.";
             }
 
-            if (!hasValue || element.Value.ValueKind == JsonValueKind.Null)
+            if (!hasValue || elementValue.ValueKind == JsonValueKind.Null)
             {
                 continue;
             }
 
-            if (!IsValidForType(field.FieldType, element.Value))
+            if (!IsValidForType(field.FieldType, elementValue))
             {
                 return $"Field '{field.FieldName}' expects value type '{field.FieldType}'.";
             }
@@ -313,7 +318,7 @@ public sealed class ListsController(CaselogDbContext dbContext, TaggingService t
                 Id = Guid.NewGuid(),
                 ListEntryId = entryId,
                 ListTypeFieldId = field.Id,
-                Value = element.Value.GetRawText()
+                Value = elementValue.GetRawText()
             });
         }
 

@@ -46,7 +46,11 @@ public sealed class EntriesController(CaselogDbContext dbContext, ListEntrySearc
         var validationError = ListsController.ValidateAndApplyValues(entry.Id, fields, request.Values ?? new Dictionary<Guid, System.Text.Json.JsonElement?>(), dbContext.ListEntryFieldValues);
         if (validationError is not null)
         {
-            return ValidationProblem(new Dictionary<string, string[]> { ["values"] = [validationError] });
+            return ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]> { ["values"] = [validationError] })
+            {
+                Title = "One or more validation errors occurred.",
+                Status = StatusCodes.Status400BadRequest
+            });
         }
 
         entry.UpdatedAt = DateTime.UtcNow;
