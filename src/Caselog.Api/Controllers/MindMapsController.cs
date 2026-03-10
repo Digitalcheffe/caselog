@@ -161,13 +161,21 @@ public sealed class MindMapsController(CaselogDbContext dbContext, TaggingServic
 
         if (request.ParentNodeId is null)
         {
-            return base.ValidationProblem(new Dictionary<string, string[]> { ["parentNodeId"] = ["Mind maps can only have one root node."] });
+            return base.ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]> { ["parentNodeId"] = ["Mind maps can only have one root node."] })
+            {
+                Title = "One or more validation errors occurred.",
+                Status = StatusCodes.Status400BadRequest
+            });
         }
 
         var parentExists = await dbContext.MindMapNodes.AsNoTracking().AnyAsync(x => x.Id == request.ParentNodeId && x.MindMapId == id, cancellationToken);
         if (!parentExists)
         {
-            return base.ValidationProblem(new Dictionary<string, string[]> { ["parentNodeId"] = ["Parent node does not exist in this mind map."] });
+            return base.ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]> { ["parentNodeId"] = ["Parent node does not exist in this mind map."] })
+            {
+                Title = "One or more validation errors occurred.",
+                Status = StatusCodes.Status400BadRequest
+            });
         }
 
         var node = new MindMapNode
@@ -209,20 +217,32 @@ public sealed class MindMapsController(CaselogDbContext dbContext, TaggingServic
             var rootCount = await dbContext.MindMapNodes.AsNoTracking().CountAsync(x => x.MindMapId == id && x.ParentNodeId == null && x.Id != nodeId, cancellationToken);
             if (rootCount > 0)
             {
-                return base.ValidationProblem(new Dictionary<string, string[]> { ["parentNodeId"] = ["Mind maps can only have one root node."] });
+                return base.ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]> { ["parentNodeId"] = ["Mind maps can only have one root node."] })
+                {
+                    Title = "One or more validation errors occurred.",
+                    Status = StatusCodes.Status400BadRequest
+                });
             }
         }
         else
         {
             if (request.ParentNodeId == nodeId)
             {
-                return base.ValidationProblem(new Dictionary<string, string[]> { ["parentNodeId"] = ["A node cannot be parent of itself."] });
+                return base.ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]> { ["parentNodeId"] = ["A node cannot be parent of itself."] })
+                {
+                    Title = "One or more validation errors occurred.",
+                    Status = StatusCodes.Status400BadRequest
+                });
             }
 
             var parentExists = await dbContext.MindMapNodes.AsNoTracking().AnyAsync(x => x.Id == request.ParentNodeId && x.MindMapId == id, cancellationToken);
             if (!parentExists)
             {
-                return base.ValidationProblem(new Dictionary<string, string[]> { ["parentNodeId"] = ["Parent node does not exist in this mind map."] });
+                return base.ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]> { ["parentNodeId"] = ["Parent node does not exist in this mind map."] })
+                {
+                    Title = "One or more validation errors occurred.",
+                    Status = StatusCodes.Status400BadRequest
+                });
             }
         }
 
@@ -258,7 +278,11 @@ public sealed class MindMapsController(CaselogDbContext dbContext, TaggingServic
 
         if (node.ParentNodeId is null)
         {
-            return base.ValidationProblem(new Dictionary<string, string[]> { ["nodeId"] = ["Root node cannot be deleted."] });
+            return base.ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]> { ["nodeId"] = ["Root node cannot be deleted."] })
+            {
+                Title = "One or more validation errors occurred.",
+                Status = StatusCodes.Status400BadRequest
+            });
         }
 
         var childNodes = await dbContext.MindMapNodes.Where(x => x.ParentNodeId == nodeId).ToListAsync(cancellationToken);
@@ -289,7 +313,11 @@ public sealed class MindMapsController(CaselogDbContext dbContext, TaggingServic
         var normalizedFormat = format.Trim().ToLowerInvariant();
         if (normalizedFormat is not ("png" or "svg"))
         {
-            return base.ValidationProblem(new Dictionary<string, string[]> { ["format"] = ["Supported export formats are png and svg."] });
+            return base.ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]> { ["format"] = ["Supported export formats are png and svg."] })
+            {
+                Title = "One or more validation errors occurred.",
+                Status = StatusCodes.Status400BadRequest
+            });
         }
 
         return Ok(new ApiEnvelope<MindMapExportResponse>(

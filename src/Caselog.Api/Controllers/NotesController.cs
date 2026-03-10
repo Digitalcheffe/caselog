@@ -171,10 +171,14 @@ public sealed class NotesController(CaselogDbContext dbContext, NoteSearchIndexS
 
         if (normalizedEntityType is null || !entityId.HasValue)
         {
-            return ValidationProblem(new Dictionary<string, string[]>
+            return ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]>
             {
                 ["entityType"] = ["entityType and entityId must both be provided when attaching a note."],
                 ["entityId"] = ["entityType and entityId must both be provided when attaching a note."]
+            })
+            {
+                Title = "One or more validation errors occurred.",
+                Status = StatusCodes.Status400BadRequest
             });
         }
 
