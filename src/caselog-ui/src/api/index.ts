@@ -62,6 +62,7 @@ export type ProfileResponse = {
   id: string;
   name: string;
   email: string;
+  role: "admin" | "member";
   twoFactorEnabled: boolean;
   avatarUrl?: string;
 };
@@ -154,8 +155,8 @@ export const deletePage = async (id: string): Promise<void> => {
 
 
 export const getNotebookPages = async (notebookId: string): Promise<Page[]> => {
-  const response = await apiRequest<ApiPage[]>(`/api/notebooks/${notebookId}/pages`);
-  return response.map(toPage);
+  const response = await apiRequest<PagedResult<ApiPage>>(`/api/notebooks/${notebookId}/pages`);
+  return response.items.map(toPage);
 };
 
 export const createNotebookPage = async (
@@ -187,17 +188,17 @@ const toNotebook = (notebook: ApiNotebook): Notebook => ({
 });
 
 export const getShelfNotebooks = async (shelfId: string): Promise<Notebook[]> => {
-  const response = await apiRequest<ApiNotebook[]>(`/api/shelves/${shelfId}/notebooks`);
-  return response.map(toNotebook);
+  const response = await apiRequest<PagedResult<ApiNotebook>>(`/api/shelves/${shelfId}/notebooks`);
+  return response.items.map(toNotebook);
 };
 
 export const createShelfNotebook = async (
   shelfId: string,
-  body: { title: string },
+  body: { name: string },
 ): Promise<Notebook> => {
-  const response = await apiRequest<ApiNotebook>(`/api/shelves/${shelfId}/notebooks`, {
+  const response = await apiRequest<ApiNotebook>(`/api/notebooks`, {
     method: "POST",
-    body: JSON.stringify(body),
+    body: JSON.stringify({ shelfId, name: body.name, description: null }),
   });
   return toNotebook(response);
 };
@@ -210,8 +211,8 @@ type ApiShelf = {
 };
 
 export const getShelves = async (): Promise<(Shelf & { notebookCount?: number })[]> => {
-  const response = await apiRequest<ApiShelf[]>("/api/shelves");
-  return response.map((shelf) => ({
+  const response = await apiRequest<PagedResult<ApiShelf>>("/api/shelves?page=1&pageSize=200");
+  return response.items.map((shelf) => ({
     id: shelf.id,
     name: shelf.name,
     description: shelf.description ?? "",
@@ -294,7 +295,7 @@ const flattenMindMapNodes = (rootNode: MindMapNode): MindMapNode[] => {
 
 export const getMindMaps = async (): Promise<MindMap[]> => {
   const response = await apiRequest<PagedResult<Omit<MindMap, "nodeCount">>>("/api/mindmaps?page=1&pageSize=200");
-  return response.items.map((mindMap) => ({ ...mindMap, nodeCount: 0 }));
+  return (response.items ?? []).map((mindMap) => ({ ...mindMap, nodeCount: 0 }));
 };
 
 export const getMindMap = async (id: string): Promise<MindMapDetail> => {
@@ -369,50 +370,42 @@ export const getPages = async (query = "page=1&pageSize=200"): Promise<Page[]> =
   return response.items.map(toPage);
 };
 
-export const getProfile = async (): Promise<ProfileResponse> => apiRequest<ProfileResponse>("/api/auth/profile");
+export const getProfile = async (): Promise<ProfileResponse> => apiRequest<ProfileResponse>("/api/auth/me");
 
-export const updateProfileName = async (name: string): Promise<ProfileResponse> =>
-  apiRequest<ProfileResponse>("/api/auth/profile", {
+export const updateProfileName = async (id: string, _name: string): Promise<ProfileResponse> =>
+  apiRequest<unknown>(`/api/users/${id}`, {
     method: "PUT",
-    body: JSON.stringify({ name }),
-  });
+    body: JSON.stringify({}),
+  }).then(() => getProfile());
 
-export const updateProfileEmail = async (email: string, currentPassword: string): Promise<void> => {
-  await apiRequest<unknown>("/api/auth/email", {
+export const updateProfileEmail = async (id: string, email: string): Promise<void> => {
+  await apiRequest<unknown>(`/api/users/${id}`, {
     method: "PUT",
-    body: JSON.stringify({ email, currentPassword }),
+    body: JSON.stringify({ email }),
   });
 };
 
 export const updateProfilePassword = async (currentPassword: string, newPassword: string): Promise<void> => {
-  await apiRequest<unknown>("/api/auth/password", {
-    method: "PUT",
+  await apiRequest<unknown>("/api/auth/change-password", {
+    method: "POST",
     body: JSON.stringify({ currentPassword, newPassword }),
   });
 };
 
-export const getTwoFactorSetup = async (): Promise<{ qrCode: string; secret: string }> =>
-  apiRequest<{ qrCode: string; secret: string }>("/api/auth/2fa/setup");
+export const getTwoFactorSetup = async (): Promise<{ qrCode: string; secret: string }> => {
+  const response = await apiRequest<{ qrCodeDataUri: string; secret: string }>("/api/auth/2fa/setup", { method: "POST" });
+  return { qrCode: response.qrCodeDataUri, secret: response.secret };
+};
 
-export const enableTwoFactor = async (token: string): Promise<void> => {
-  await apiRequest<unknown>("/api/auth/2fa/enable", {
+export const enableTwoFactor = async (code: string): Promise<void> => {
+  await apiRequest<unknown>("/api/auth/2fa/verify", {
     method: "POST",
-    body: JSON.stringify({ token }),
+    body: JSON.stringify({ code }),
   });
 };
 
 export const disableTwoFactor = async (): Promise<void> => {
-  await apiRequest<unknown>("/api/auth/2fa/disable", {
-    method: "POST",
-  });
-};
-
-export const getAuthSessions = async (): Promise<
-  Array<{ id: string; device: string; browser: string; lastSeenAt: string; isCurrent: boolean }>
-> => apiRequest<Array<{ id: string; device: string; browser: string; lastSeenAt: string; isCurrent: boolean }>>("/api/auth/sessions");
-
-export const revokeAuthSession = async (id: string): Promise<void> => {
-  await apiRequest<unknown>(`/api/auth/sessions/${id}`, {
+  await apiRequest<unknown>("/api/auth/2fa", {
     method: "DELETE",
   });
 };
@@ -566,42 +559,47 @@ export type AdminUserUpdateInput = {
   enabled: boolean;
 };
 
-export const getAdminUsers = async (): Promise<AdminUser[]> => apiRequest<AdminUser[]>("/api/admin/users");
+type ApiUser = {
+  id: string;
+  email: string;
+  role: "admin" | "member";
+  isDisabled: boolean;
+  lastLoginAt: string | null;
+};
+
+const toAdminUser = (user: ApiUser): AdminUser => ({
+  id: user.id,
+  name: user.email,
+  email: user.email,
+  role: user.role,
+  enabled: !user.isDisabled,
+  lastLoginAt: user.lastLoginAt,
+});
+
+export const getAdminUsers = async (): Promise<AdminUser[]> => (await apiRequest<ApiUser[]>("/api/users")).map(toAdminUser);
 
 export const getAdminUser = async (id: string): Promise<AdminUser> =>
-  apiRequest<AdminUser>(`/api/admin/users/${id}`);
+  toAdminUser(await apiRequest<ApiUser>(`/api/users/${id}`));
 
 export const createAdminUser = async (payload: AdminUserInput): Promise<AdminUser> =>
-  apiRequest<AdminUser>("/api/admin/users", {
+  toAdminUser(await apiRequest<ApiUser>("/api/users", {
     method: "POST",
-    body: JSON.stringify(payload),
-  });
+    body: JSON.stringify({ email: payload.email, password: payload.password, role: payload.role }),
+  }));
 
 export const updateAdminUser = async (id: string, payload: AdminUserUpdateInput): Promise<AdminUser> =>
-  apiRequest<AdminUser>(`/api/admin/users/${id}`, {
+  toAdminUser(await apiRequest<ApiUser>(`/api/users/${id}`, {
     method: "PUT",
-    body: JSON.stringify(payload),
-  });
+    body: JSON.stringify({ email: payload.email, role: payload.role, isDisabled: !payload.enabled }),
+  }));
 
 export const deleteAdminUser = async (id: string): Promise<void> => {
-  await apiRequest<unknown>(`/api/admin/users/${id}`, { method: "DELETE" });
+  await apiRequest<unknown>(`/api/users/${id}`, { method: "DELETE" });
 };
 
 export const toggleAdminUserStatus = async (id: string, enabled: boolean): Promise<void> => {
-  await apiRequest<unknown>(`/api/admin/users/${id}/${enabled ? "enable" : "disable"}`, {
-    method: "POST",
+  await apiRequest<unknown>(`/api/users/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ isDisabled: !enabled }),
   });
-};
-
-export const forceAdminUserResetPassword = async (id: string): Promise<void> => {
-  await apiRequest<unknown>(`/api/admin/users/${id}/reset-password`, { method: "POST" });
-};
-
-export const impersonateAdminUser = async (id: string): Promise<{ token: string }> =>
-  apiRequest<{ token: string }>(`/api/admin/users/${id}/impersonate`, {
-    method: "POST",
-  });
-
-export const exitAdminImpersonation = async (): Promise<void> => {
-  await apiRequest<unknown>("/api/admin/impersonate/exit", { method: "POST" });
 };
