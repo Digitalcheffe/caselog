@@ -239,15 +239,12 @@ app.UseWhen(
         });
     });
 
-if (app.Environment.IsDevelopment())
+app.UseSwagger();
+app.UseSwaggerUI(options =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(options =>
-    {
-        options.SwaggerEndpoint("/swagger/v1/swagger.json", "Caselog API v1");
-        options.RoutePrefix = "docs";
-    });
-}
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "Caselog API v1");
+    options.RoutePrefix = "swagger";
+});
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
