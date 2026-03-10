@@ -370,3 +370,101 @@ export const attachListToPage = async (listId: string, pageId: string): Promise<
     body: JSON.stringify({ pageId }),
   });
 };
+
+export type ProfileResponse = {
+  name: string;
+  email: string;
+  avatarUrl?: string | null;
+  twoFactorEnabled?: boolean;
+};
+
+export type TwoFactorSetupResponse = {
+  qrCodeImageUrl: string;
+  manualKey: string;
+};
+
+export type AuthSession = {
+  id: string;
+  device: string;
+  browser: string;
+  lastSeenAt: string;
+  isCurrent: boolean;
+};
+
+export type ApiKeyRecord = {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt?: string | null;
+};
+
+export type CreatedApiKey = {
+  id: string;
+  name: string;
+  key: string;
+  createdAt: string;
+};
+
+export const getProfile = async (): Promise<ProfileResponse> => apiRequest<ProfileResponse>("/api/auth/profile");
+
+export const updateProfileName = async (name: string): Promise<ProfileResponse> =>
+  apiRequest<ProfileResponse>("/api/auth/profile", {
+    method: "PUT",
+    body: JSON.stringify({ name }),
+  });
+
+export const updateProfileEmail = async (email: string, currentPassword: string): Promise<void> => {
+  await apiRequest<{ updated: boolean }>("/api/auth/email", {
+    method: "PUT",
+    body: JSON.stringify({ email, currentPassword }),
+  });
+};
+
+export const updateProfilePassword = async (
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> => {
+  await apiRequest<{ updated: boolean }>("/api/auth/password", {
+    method: "PUT",
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+};
+
+export const getTwoFactorSetup = async (): Promise<TwoFactorSetupResponse> =>
+  apiRequest<TwoFactorSetupResponse>("/api/auth/2fa/setup");
+
+export const enableTwoFactor = async (token: string): Promise<void> => {
+  await apiRequest<{ enabled: boolean }>("/api/auth/2fa/enable", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+};
+
+export const disableTwoFactor = async (): Promise<void> => {
+  await apiRequest<{ disabled: boolean }>("/api/auth/2fa/disable", {
+    method: "POST",
+  });
+};
+
+export const getAuthSessions = async (): Promise<AuthSession[]> =>
+  apiRequest<AuthSession[]>("/api/auth/sessions");
+
+export const revokeAuthSession = async (sessionId: string): Promise<void> => {
+  await apiRequest<{ revoked: boolean }>(`/api/auth/sessions/${sessionId}`, {
+    method: "DELETE",
+  });
+};
+
+export const getApiKeys = async (): Promise<ApiKeyRecord[]> => apiRequest<ApiKeyRecord[]>("/api/apikeys");
+
+export const createApiKey = async (name: string): Promise<CreatedApiKey> =>
+  apiRequest<CreatedApiKey>("/api/apikeys", {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+
+export const revokeApiKey = async (keyId: string): Promise<void> => {
+  await apiRequest<{ revoked: boolean }>(`/api/apikeys/${keyId}`, {
+    method: "DELETE",
+  });
+};
