@@ -226,6 +226,9 @@ button {
 .badge-success {
   color: var(--color-success);
 }
+.badge-warning {
+  color: var(--color-warning);
+}
 .input {
   width: 100%;
   background: var(--color-bg-elevated);
@@ -475,4 +478,33 @@ button {
   border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 6px 8px;
+}
+
+.inline-link {
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  cursor: pointer;
+  padding: 0;
+}
+
+.card-link-title {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.empty-state-card {
+  text-align: center;
+}
+
+.empty-state-icon {
+  font-size: 1.5rem;
+}
+
+.muted {
+  color: var(--color-text-secondary);
 }

@@ -11,7 +11,7 @@ export const Textarea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement
 export const Select = ({ children, ...props }: PropsWithChildren<React.SelectHTMLAttributes<HTMLSelectElement>>) => <select {...props} className={`input ${props.className ?? ''}`.trim()}>{children}</select>;
 export const Checkbox = (props: React.InputHTMLAttributes<HTMLInputElement>) => <input type="checkbox" {...props} className={`checkbox ${props.className ?? ''}`.trim()} />;
 
-export const Card = ({ children }: PropsWithChildren) => <section className="card">{children}</section>;
+export const Card = ({ children, className }: PropsWithChildren<{ className?: string }>) => <section className={`card ${className ?? ""}`.trim()}>{children}</section>;
 export const CardGrid = ({ children }: PropsWithChildren) => <div className="card-grid">{children}</div>;
 export const PageHeader = ({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) => (
   <header className="page-header"><div><h1>{title}</h1>{subtitle ? <p>{subtitle}</p> : null}</div>{actions}</header>
@@ -20,7 +20,7 @@ export const PageHeader = ({ title, subtitle, actions }: { title: string; subtit
 export const MetadataLine = ({ children }: PropsWithChildren) => <p className="meta-line">{children}</p>;
 export const TagList = ({ tags }: { tags: string[] }) => <div className="tag-list">{tags.map((tag) => <span key={tag} className="tag">{tag}</span>)}</div>;
 export const EmptyState = ({ title, body }: { title: string; body: string }) => <Card><h3>{title}</h3><p className="muted">{body}</p></Card>;
-export const Badge = ({ children, tone = 'neutral' }: PropsWithChildren<{ tone?: 'neutral' | 'accent' | 'danger' | 'success' }>) => <span className={`badge badge-${tone}`}>{children}</span>;
+export const Badge = ({ children, tone = 'neutral' }: PropsWithChildren<{ tone?: 'neutral' | 'accent' | 'danger' | 'success' | 'warning' }>) => <span className={`badge badge-${tone}`}>{children}</span>;
 export const Spinner = () => <span className="spinner" aria-label="loading" />;
 export const SkeletonCard = () => <div className="skeleton" />;
 

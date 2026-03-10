@@ -7,9 +7,17 @@ import {
   type KeyboardEvent,
 } from "react";
 import {
+  createNotebookPage,
+  createShelf,
+  createShelfNotebook,
   db,
   deletePage,
+  getNotebookPages,
+  getShelfNotebooks,
+  getShelves,
+  type Notebook,
   type Page,
+  type Shelf,
   updatePage,
   uploadPageAttachment,
 } from "./api";
@@ -69,14 +77,16 @@ const AppInner = () => {
   );
   const [debouncedSearch, setDebouncedSearch] = useState(search);
   const [pages, setPages] = useState<Page[]>(() => db.pages());
+  const [shelves, setShelves] = useState<(Shelf & { notebookCount?: number })[]>(() =>
+    db.shelves().map((shelf) => ({ ...shelf, notebookCount: undefined })),
+  );
+  const [notebooks, setNotebooks] = useState<Notebook[]>(() => db.notebooks());
   const [toast, setToast] = useState("");
   const [users, setUsers] = useState<User[]>([
     { id: "u1", name: "Admin", email: "admin@local", role: "admin" },
     { id: "u2", name: "Member", email: "member@local", role: "member" },
   ]);
   const isAdmin = true;
-  const shelves = db.shelves();
-  const notebooks = db.notebooks();
 
   useEffect(() => {
     if (!toast) return;
@@ -96,6 +106,51 @@ const AppInner = () => {
       : url.searchParams.delete("q");
     window.history.replaceState({}, "", `${url.pathname}${url.search}`);
   }, [debouncedSearch]);
+
+  useEffect(() => {
+    const loadShelves = async () => {
+      try {
+        const fetchedShelves = await getShelves();
+        setShelves(fetchedShelves);
+      } catch {
+        setShelves(db.shelves().map((shelf) => ({ ...shelf, notebookCount: undefined })));
+      }
+    };
+
+    void loadShelves();
+  }, []);
+
+  useEffect(() => {
+    if (currentRoute !== "/shelves/:id" || !params.id) return;
+
+    const loadNotebooks = async () => {
+      try {
+        setNotebooks(await getShelfNotebooks(params.id));
+      } catch {
+        setNotebooks(db.notebooks().filter((notebook) => notebook.shelfId === params.id));
+      }
+    };
+
+    void loadNotebooks();
+  }, [currentRoute, params.id]);
+
+  useEffect(() => {
+    if (currentRoute !== "/notebooks/:id" || !params.id) return;
+
+    const loadPages = async () => {
+      try {
+        const notebookPages = await getNotebookPages(params.id);
+        setPages((previous) => {
+          const remaining = previous.filter((page) => page.notebookId !== params.id);
+          return [...remaining, ...notebookPages];
+        });
+      } catch {
+        setPages(db.pages());
+      }
+    };
+
+    void loadPages();
+  }, [currentRoute, params.id]);
 
   const filtered = useMemo(
     () =>
@@ -133,60 +188,54 @@ const AppInner = () => {
       break;
     case "/shelves":
       content = (
-        <div>
-          <PageHeader title="Shelves" />
-          <CardGrid>
-            {shelves.map((s) => (
-              <Card key={s.id}>
-                <h3>{s.name}</h3>
-                <p>{s.description}</p>
-                <Button onClick={() => navigate(`/shelves/${s.id}`)}>
-                  Open
-                </Button>
-              </Card>
-            ))}
-          </CardGrid>
-        </div>
+        <ShelvesPage
+          shelves={shelves}
+          notebooks={notebooks}
+          navigate={navigate}
+          onShelvesChange={setShelves}
+          onToast={setToast}
+        />
       );
       break;
-    case "/shelves/:id":
-      content = (
-        <div>
-          <PageHeader title="Shelf detail" />
-          <CardGrid>
-            {notebooks
-              .filter((n) => n.shelfId === params.id)
-              .map((n) => (
-                <Card key={n.id}>
-                  <h3>{n.name}</h3>
-                  <Button onClick={() => navigate(`/notebooks/${n.id}`)}>
-                    Open
-                  </Button>
-                </Card>
-              ))}
-          </CardGrid>
-        </div>
+    case "/shelves/:id": {
+      const shelf = shelves.find((item) => item.id === params.id);
+      const shelfNotebooks = notebooks.filter((item) => item.shelfId === params.id);
+      content = shelf ? (
+        <ShelfDetailPage
+          shelf={shelf}
+          notebooks={shelfNotebooks}
+          pages={pages}
+          navigate={navigate}
+          onNotebookCreated={(notebook) =>
+            setNotebooks((previous) => [...previous.filter((item) => item.id !== notebook.id), notebook])
+          }
+          onToast={setToast}
+        />
+      ) : (
+        <EmptyState title="Shelf missing" body="Not found." />
       );
       break;
-    case "/notebooks/:id":
-      content = (
-        <div>
-          <PageHeader title="Notebook detail" />
-          <CardGrid>
-            {pages
-              .filter((p) => p.notebookId === params.id)
-              .map((p) => (
-                <Card key={p.id}>
-                  <h3>{p.title}</h3>
-                  <Button onClick={() => navigate(`/pages/${p.id}`)}>
-                    Open
-                  </Button>
-                </Card>
-              ))}
-          </CardGrid>
-        </div>
+    }
+    case "/notebooks/:id": {
+      const notebook = notebooks.find((item) => item.id === params.id);
+      const notebookPages = pages.filter((page) => page.notebookId === params.id);
+      const shelf = shelves.find((item) => item.id === notebook?.shelfId);
+      content = notebook ? (
+        <NotebookDetailPage
+          notebook={notebook}
+          shelf={shelf}
+          pages={notebookPages}
+          navigate={navigate}
+          onPageCreated={(page) =>
+            setPages((previous) => [...previous.filter((item) => item.id !== page.id), page])
+          }
+          onToast={setToast}
+        />
+      ) : (
+        <EmptyState title="Notebook missing" body="Not found." />
       );
       break;
+    }
     case "/pages/:id": {
       const page = pages.find((p) => p.id === params.id);
       content = page ? (
@@ -350,6 +399,211 @@ const FollowUps = ({
           </Button>
         </Card>
       ))}
+    </div>
+  );
+};
+
+const ShelvesPage = ({
+  shelves,
+  notebooks,
+  navigate,
+  onShelvesChange,
+  onToast,
+}: {
+  shelves: (Shelf & { notebookCount?: number })[];
+  notebooks: Notebook[];
+  navigate: (path: string) => void;
+  onShelvesChange: (value: (Shelf & { notebookCount?: number })[]) => void;
+  onToast: (message: string) => void;
+}) => {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+
+  const createNewShelf = async () => {
+    const shelfName = name.trim() || "Untitled Shelf";
+    const shelfDescription = description.trim();
+
+    try {
+      const created = await createShelf({ name: shelfName, description: shelfDescription });
+      onShelvesChange([...shelves, { ...created, notebookCount: 0 }]);
+      setName("");
+      setDescription("");
+      onToast("Shelf created");
+    } catch {
+      onToast("Failed to create shelf");
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title="Shelves"
+        actions={
+          <div className="row">
+            <Input
+              placeholder="Shelf name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+            <Input
+              placeholder="Description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
+            <Button onClick={() => void createNewShelf()}>New Shelf</Button>
+          </div>
+        }
+      />
+      <CardGrid>
+        {shelves.map((shelf) => (
+          <Card key={shelf.id}>
+            <h3>{shelf.name}</h3>
+            <p>{shelf.description || "No description"}</p>
+            <MetadataLine>
+              {(shelf.notebookCount ?? notebooks.filter((item) => item.shelfId === shelf.id).length).toString()} notebooks
+            </MetadataLine>
+            <Button onClick={() => navigate(`/shelves/${shelf.id}`)}>Open</Button>
+          </Card>
+        ))}
+      </CardGrid>
+    </div>
+  );
+};
+
+const ShelfDetailPage = ({
+  shelf,
+  notebooks,
+  pages,
+  navigate,
+  onNotebookCreated,
+  onToast,
+}: {
+  shelf: Shelf;
+  notebooks: Notebook[];
+  pages: Page[];
+  navigate: (path: string) => void;
+  onNotebookCreated: (notebook: Notebook) => void;
+  onToast: (message: string) => void;
+}) => {
+  const createNewNotebook = async () => {
+    try {
+      const created = await createShelfNotebook(shelf.id, { title: "Untitled Notebook" });
+      onNotebookCreated(created);
+      onToast("Notebook created");
+    } catch {
+      onToast("Failed to create notebook");
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title={shelf.name}
+        subtitle={shelf.description}
+        actions={<Button onClick={() => void createNewNotebook()}>New Notebook</Button>}
+      />
+      <CardGrid>
+        {notebooks.map((notebook) => {
+          const pageCount = notebook.pageCount ?? pages.filter((page) => page.notebookId === notebook.id).length;
+          return (
+            <Card key={notebook.id}>
+              <h3>{notebook.name}</h3>
+              <p>{notebook.description || "No description"}</p>
+              <MetadataLine>Notebook</MetadataLine>
+              <div className="row">
+                <Badge>{pageCount} pages</Badge>
+              </div>
+              <Button onClick={() => navigate(`/notebooks/${notebook.id}`)}>Open</Button>
+            </Card>
+          );
+        })}
+      </CardGrid>
+    </div>
+  );
+};
+
+const NotebookDetailPage = ({
+  notebook,
+  shelf,
+  pages,
+  navigate,
+  onPageCreated,
+  onToast,
+}: {
+  notebook: Notebook;
+  shelf?: Shelf & { notebookCount?: number };
+  pages: Page[];
+  navigate: (path: string) => void;
+  onPageCreated: (page: Page) => void;
+  onToast: (message: string) => void;
+}) => {
+  const createNewPage = async () => {
+    try {
+      const created = await createNotebookPage(notebook.id, { title: "Untitled" });
+      onPageCreated(created);
+      navigate(`/pages/${created.id}`);
+    } catch {
+      onToast("Failed to create page");
+    }
+  };
+
+  return (
+    <div>
+      <MetadataLine>
+        {shelf ? (
+          <button className="inline-link" type="button" onClick={() => navigate(`/shelves/${shelf.id}`)}>
+            {shelf.name}
+          </button>
+        ) : (
+          "Shelf"
+        )}{" "}
+        &gt;
+        <button className="inline-link" type="button" onClick={() => navigate(`/notebooks/${notebook.id}`)}>
+          {notebook.name}
+        </button>
+      </MetadataLine>
+      <PageHeader
+        title={notebook.name}
+        actions={<Button onClick={() => void createNewPage()}>New Page</Button>}
+      />
+      {pages.length === 0 ? (
+        <Card className="empty-state-card">
+          <div className="empty-state-icon" aria-hidden>📄</div>
+          <h3>No pages yet</h3>
+          <p className="muted">Create your first page</p>
+          <Button onClick={() => void createNewPage()}>Create your first page</Button>
+        </Card>
+      ) : (
+        <CardGrid>
+          {pages.map((page) => {
+            const overflow = Math.max(page.tags.length - 3, 0);
+            return (
+              <Card key={page.id}>
+                <button
+                  type="button"
+                  className="card-link-title"
+                  onClick={() => navigate(`/pages/${page.id}`)}
+                >
+                  <h3>{page.title}</h3>
+                </button>
+                <MetadataLine>Updated {formatDate(page.updatedAt)}</MetadataLine>
+                <div className="row">
+                  <Badge tone={page.visibility === "public" ? "accent" : "neutral"}>
+                    {page.visibility === "public" ? "Public" : "Private"}
+                  </Badge>
+                  {page.followUp ? <Badge tone="warning">Follow-up</Badge> : null}
+                </div>
+                <div className="tag-list">
+                  {page.tags.slice(0, 3).map((tag) => (
+                    <span key={tag} className="tag-chip">{tag}</span>
+                  ))}
+                  {overflow > 0 ? <span className="tag-chip">+{overflow} more</span> : null}
+                </div>
+              </Card>
+            );
+          })}
+        </CardGrid>
+      )}
     </div>
   );
 };
