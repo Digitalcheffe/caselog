@@ -22,9 +22,8 @@ import {
   type MindMapNode,
   type Page,
 } from "../api";
-import { Button, Card, CardGrid, EmptyState, Input, MetadataLine, PageHeader } from "./ui";
-
-const posKey = (id: string) => `mindmap-positions:${id}`;
+import type { ApiError } from "../api/client";
+import { Button, Card, CardGrid, EmptyState, Input, MetadataLine, PageHeader, Spinner } from "./ui";
 
 const flattenNodes = (root: MindMapNode): MindMapNode[] => {
   const stack = [root];
@@ -66,9 +65,13 @@ export const MindMapsIndexPage = ({ navigate, onToast }: { navigate: (path: stri
   const [mindMaps, setMindMaps] = useState<Array<MindMap & { nodeCount: number }>>([]);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
+      setLoading(true);
+      setError(null);
       try {
         const maps = await getMindMaps();
         const withCounts = await Promise.all(
@@ -78,8 +81,13 @@ export const MindMapsIndexPage = ({ navigate, onToast }: { navigate: (path: stri
           }),
         );
         setMindMaps(withCounts);
-      } catch {
-        onToast("Failed to load mind maps");
+      } catch (err) {
+        const apiError = err as ApiError;
+        const message = apiError.status ? `Error ${apiError.status}: ${apiError.message}` : "Network error — check connection";
+        setError(message);
+        onToast(message);
+      } finally {
+        setLoading(false);
       }
     })();
   }, [onToast]);
@@ -87,9 +95,11 @@ export const MindMapsIndexPage = ({ navigate, onToast }: { navigate: (path: stri
   return (
     <div>
       <PageHeader title="Mind Maps" actions={<Button onClick={() => setOpen(true)}>New Mind Map</Button>} />
-      {mindMaps.length === 0 ? (
+      {loading ? <Card><Spinner /></Card> : null}
+      {error ? <Card><p>{error}</p></Card> : null}
+      {!loading && !error && mindMaps.length === 0 ? (
         <EmptyState title="No mind maps yet" body="Create one to start mapping ideas." />
-      ) : (
+      ) : !loading && !error ? (
         <CardGrid>
           {mindMaps.map((map) => (
             <Card key={map.id}>
@@ -100,7 +110,7 @@ export const MindMapsIndexPage = ({ navigate, onToast }: { navigate: (path: stri
             </Card>
           ))}
         </CardGrid>
-      )}
+      ) : null}
       {open ? (
         <div className="dialog-backdrop">
           <Card className="mindmap-modal">
@@ -135,21 +145,24 @@ export const MindMapEditorPage = ({ id, onToast }: { id: string; onToast: (value
   const [attachOpen, setAttachOpen] = useState(false);
   const [pageQuery, setPageQuery] = useState("");
   const [pages, setPages] = useState<Page[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const saveTimer = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     try {
+      setLoading(true);
+      setError(null);
       const loaded = await getMindMap(id);
       setDetail(loaded);
       const flatNodes = flattenNodes(loaded.rootNode);
       const map = Object.fromEntries(flatNodes.map((node) => [node.id, node]));
       setNodeMap(map);
-      const stored = JSON.parse(window.localStorage.getItem(posKey(id)) ?? "{}") as Record<string, { x: number; y: number }>;
-      const computed = Object.keys(stored).length > 0 ? null : buildInitialPositions(flatNodes);
+      const computed = buildInitialPositions(flatNodes);
       setFlowNodes(flatNodes.map((node) => ({
         id: node.id,
         data: { label: node.label },
-        position: stored[node.id] ?? computed?.get(node.id) ?? { x: 0, y: 0 },
+        position: computed.get(node.id) ?? { x: 0, y: 0 },
         style: {
           borderRadius: 8,
           background: "var(--color-bg-elevated)",
@@ -158,8 +171,13 @@ export const MindMapEditorPage = ({ id, onToast }: { id: string; onToast: (value
           padding: 10,
         },
       })));
-    } catch {
-      onToast("Failed to load mind map");
+    } catch (err) {
+      const apiError = err as ApiError;
+      const message = apiError.status ? `Error ${apiError.status}: ${apiError.message}` : "Network error — check connection";
+      setError(message);
+      onToast(message);
+    } finally {
+      setLoading(false);
     }
   }, [id, onToast]);
 
@@ -177,10 +195,7 @@ export const MindMapEditorPage = ({ id, onToast }: { id: string; onToast: (value
     };
   }, [detail, flowNodes, id]);
 
-  const persistPositions = (nodes: Node[]) => {
-    const values = Object.fromEntries(nodes.map((node) => [node.id, node.position]));
-    window.localStorage.setItem(posKey(id), JSON.stringify(values));
-  };
+  const persistPositions = (_nodes: Node[]) => {};
 
   const edges: Edge[] = useMemo(
     () => Object.values(nodeMap).filter((node) => node.parentNodeId).map((node) => ({ id: `${node.parentNodeId}-${node.id}`, source: node.parentNodeId as string, target: node.id })),
@@ -197,6 +212,9 @@ export const MindMapEditorPage = ({ id, onToast }: { id: string; onToast: (value
       sortOrder: current.sortOrder,
     });
   };
+
+  if (loading) return <Card><Spinner /></Card>;
+  if (error) return <Card><p>{error}</p></Card>;
 
   return (
     <div className="mindmap-editor-page" onClick={() => setContextMenu(null)}>
