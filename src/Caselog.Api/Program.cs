@@ -169,6 +169,7 @@ static async Task ApplyMigrationsWithRecoveryAsync(
     }
 }
 
+
 static async Task<List<string>> GetMissingRequiredTablesAsync(CaselogDbContext dbContext, string[] requiredTableNames)
 {
     var existingTables = await GetExistingTableNamesAsync(dbContext);
