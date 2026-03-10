@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,6 +33,7 @@ builder.Services
 
 builder.Services.AddAuthorization();
 builder.Services.AddControllers();
+builder.Services.AddOpenApi();
 builder.Services.AddScoped<PageSearchIndexService>();
 builder.Services.AddScoped<NoteSearchIndexService>();
 builder.Services.AddScoped<TaggingService>();
@@ -236,6 +238,12 @@ app.UseWhen(
             await context.Response.WriteAsJsonAsync(problem);
         });
     });
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+    app.MapScalarApiReference("/docs");
+}
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
