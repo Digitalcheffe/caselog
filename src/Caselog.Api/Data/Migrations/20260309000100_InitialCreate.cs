@@ -1,11 +1,14 @@
 using System;
 using Caselog.Api.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Caselog.Api.Data.Migrations;
 
+[DbContext(typeof(CaselogDbContext))]
+[Migration("20260309000100_InitialCreate")]
 public partial class InitialCreate : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)

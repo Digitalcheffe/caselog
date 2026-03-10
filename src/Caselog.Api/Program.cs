@@ -5,6 +5,8 @@ using Caselog.Api.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,7 +24,7 @@ if (!string.IsNullOrWhiteSpace(dataDirectory))
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 builder.Services.AddDbContext<CaselogDbContext>(options =>
     options.UseSqlite($"Data Source={dataPath}",
-        b => b.MigrationsAssembly("Caselog.Api")));
+        sqliteOptions => sqliteOptions.MigrationsAssembly(typeof(CaselogDbContext).Assembly.GetName().Name)));
 
 builder.Services
     .AddAuthentication(ApiKeyAuthenticationDefaults.Scheme)
@@ -37,62 +39,66 @@ await using (var scope = app.Services.CreateAsyncScope())
     var dbContext = scope.ServiceProvider.GetRequiredService<CaselogDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
+    var migrationsAssembly = dbContext.GetService<IMigrationsAssembly>();
+    var allMigrations = migrationsAssembly.Migrations.Keys.OrderBy(x => x).ToArray();
+    var pendingMigrations = (await dbContext.Database.GetPendingMigrationsAsync()).OrderBy(x => x).ToArray();
+
+    logger.LogInformation("SQLite startup diagnostics: DataPath={DataPath}; Context={Context}; Provider={Provider}; MigrationsAssembly={MigrationsAssembly}; VisibleMigrations=[{VisibleMigrations}]; PendingMigrations=[{PendingMigrations}]",
+        dataPath,
+        dbContext.GetType().FullName,
+        dbContext.Database.ProviderName,
+        migrationsAssembly.Assembly.GetName().Name,
+        string.Join(", ", allMigrations),
+        string.Join(", ", pendingMigrations));
 
     await dbContext.Database.MigrateAsync();
-
-    if (await HasMigrationHistoryWithoutCoreSchemaAsync(dbContext))
-    {
-        logger.LogWarning("Detected migration history without required core tables. Rebuilding migration history and re-applying migrations.");
-        await dbContext.Database.ExecuteSqlRawAsync("DROP TABLE IF EXISTS \"__EFMigrationsHistory\";");
-        await dbContext.Database.MigrateAsync();
-    }
-
     await dbContext.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
 
-    try
+    var missingTables = await GetMissingRequiredTablesAsync(dbContext, ["Users", "UserApiKeys"]);
+    if (missingTables.Count > 0)
     {
-        if (!await dbContext.Users.AnyAsync())
-        {
-            var createdAt = DateTime.UtcNow;
-            var defaultApiKey = ApiKeyHasher.GenerateApiKey();
-
-            var adminUser = new User
-            {
-                Id = Guid.NewGuid(),
-                Email = "admin@caselog.local",
-                PasswordHash = string.Empty,
-                Role = UserRole.Admin,
-                CreatedAt = createdAt
-            };
-
-            var adminApiKey = new UserApiKey
-            {
-                Id = Guid.NewGuid(),
-                UserId = adminUser.Id,
-                KeyHash = ApiKeyHasher.Hash(defaultApiKey),
-                Label = "Initial bootstrap key",
-                CreatedAt = createdAt
-            };
-
-            dbContext.Users.Add(adminUser);
-            dbContext.UserApiKeys.Add(adminApiKey);
-            await dbContext.SaveChangesAsync();
-
-            logger.LogWarning("========================================================");
-            logger.LogWarning("Caselog default admin account created.");
-            logger.LogWarning("Email: {Email}", adminUser.Email);
-            logger.LogWarning("API Key (shown once): {ApiKey}", defaultApiKey);
-            logger.LogWarning("Store this key securely. It will not be shown again.");
-            logger.LogWarning("========================================================");
-        }
+        throw new InvalidOperationException(
+            $"Database migration completed but required tables are missing: {string.Join(", ", missingTables)}. " +
+            "This usually means runtime migrations were not discovered or do not match the runtime model.");
     }
-    catch (Exception ex)
+
+    if (!await dbContext.Users.AnyAsync())
     {
-        logger.LogError(ex, "Failed while seeding default admin user and API key.");
+        var createdAt = DateTime.UtcNow;
+        var defaultApiKey = ApiKeyHasher.GenerateApiKey();
+
+        var adminUser = new User
+        {
+            Id = Guid.NewGuid(),
+            Email = "admin@caselog.local",
+            PasswordHash = string.Empty,
+            Role = UserRole.Admin,
+            CreatedAt = createdAt
+        };
+
+        var adminApiKey = new UserApiKey
+        {
+            Id = Guid.NewGuid(),
+            UserId = adminUser.Id,
+            KeyHash = ApiKeyHasher.Hash(defaultApiKey),
+            Label = "Initial bootstrap key",
+            CreatedAt = createdAt
+        };
+
+        dbContext.Users.Add(adminUser);
+        dbContext.UserApiKeys.Add(adminApiKey);
+        await dbContext.SaveChangesAsync();
+
+        logger.LogWarning("========================================================");
+        logger.LogWarning("Caselog default admin account created.");
+        logger.LogWarning("Email: {Email}", adminUser.Email);
+        logger.LogWarning("API Key (shown once): {ApiKey}", defaultApiKey);
+        logger.LogWarning("Store this key securely. It will not be shown again.");
+        logger.LogWarning("========================================================");
     }
 }
 
-static async Task<bool> HasMigrationHistoryWithoutCoreSchemaAsync(CaselogDbContext dbContext)
+static async Task<List<string>> GetMissingRequiredTablesAsync(CaselogDbContext dbContext, string[] requiredTableNames)
 {
     await using var connection = dbContext.Database.GetDbConnection();
     if (connection.State != System.Data.ConnectionState.Open)
@@ -104,19 +110,17 @@ static async Task<bool> HasMigrationHistoryWithoutCoreSchemaAsync(CaselogDbConte
     command.CommandText =
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%';";
 
-    var tableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var existingTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     await using var reader = await command.ExecuteReaderAsync();
     while (await reader.ReadAsync())
     {
         if (!reader.IsDBNull(0))
         {
-            tableNames.Add(reader.GetString(0));
+            existingTables.Add(reader.GetString(0));
         }
     }
 
-    return tableNames.Contains("__EFMigrationsHistory")
-        && !tableNames.Contains("Users")
-        && tableNames.Count == 1;
+    return requiredTableNames.Where(name => !existingTables.Contains(name)).ToList();
 }
 
 app.UseWhen(
