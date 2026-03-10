@@ -23,6 +23,41 @@ export type Notebook = {
   pageCount?: number;
 };
 
+export type ListFieldType = "text" | "number" | "boolean" | "date" | "select";
+
+export type ListType = {
+  id: string;
+  name: string;
+  description?: string | null;
+  visibility: "private" | "internal" | "public";
+  publicSlug?: string | null;
+  createdAt: string;
+};
+
+export type ListTypeField = {
+  id: string;
+  listTypeId: string;
+  fieldName: string;
+  fieldType: ListFieldType;
+  required: boolean;
+  sortOrder: number;
+};
+
+export type ListEntry = {
+  id: string;
+  listTypeId: string;
+  createdAt: string;
+  updatedAt: string;
+  values: Array<{
+    fieldId: string;
+    fieldName: string;
+    fieldType: ListFieldType;
+    required: boolean;
+    sortOrder: number;
+    value: string | number | boolean | null;
+  }>;
+};
+
 const load = <T>(key: string, fallback: T): T => {
   const raw = window.localStorage.getItem(key);
   if (!raw) return fallback;
@@ -223,4 +258,115 @@ export const createShelf = async (body: {
     name: response.name,
     description: response.description ?? "",
   };
+};
+
+type PagedResult<T> = {
+  items: T[];
+};
+
+type ApiListType = {
+  id: string;
+  name: string;
+  description?: string;
+  visibility: "private" | "internal" | "public";
+  publicSlug?: string;
+  createdAt: string;
+};
+
+export const getLists = async (): Promise<ListType[]> => {
+  const response = await apiRequest<PagedResult<ApiListType>>("/api/lists?page=1&pageSize=200");
+  return response.items;
+};
+
+export const getList = async (id: string): Promise<ListType> =>
+  apiRequest<ListType>(`/api/lists/${id}`);
+
+export const createList = async (name: string): Promise<ListType> =>
+  apiRequest<ListType>("/api/lists", {
+    method: "POST",
+    body: JSON.stringify({
+      name,
+      description: null,
+      visibility: "private",
+      publicSlug: null,
+    }),
+  });
+
+export const updateList = async (
+  id: string,
+  body: Partial<Pick<ListType, "name" | "description" | "visibility" | "publicSlug">>,
+): Promise<ListType> => {
+  const current = await getList(id);
+  return apiRequest<ListType>(`/api/lists/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      name: body.name ?? current.name,
+      description: body.description ?? current.description ?? null,
+      visibility: body.visibility ?? current.visibility,
+      publicSlug: body.publicSlug ?? current.publicSlug ?? null,
+    }),
+  });
+};
+
+export const getListFields = async (id: string): Promise<ListTypeField[]> =>
+  apiRequest<ListTypeField[]>(`/api/lists/${id}/fields`);
+
+export const createListField = async (
+  id: string,
+  body: { fieldName: string; fieldType: ListFieldType; required?: boolean; sortOrder: number },
+): Promise<ListTypeField> =>
+  apiRequest<ListTypeField>(`/api/lists/${id}/fields`, {
+    method: "POST",
+    body: JSON.stringify({ ...body, required: body.required ?? false }),
+  });
+
+export const deleteListField = async (id: string, fieldId: string): Promise<void> => {
+  await apiRequest<{ deleted: boolean }>(`/api/lists/${id}/fields/${fieldId}`, { method: "DELETE" });
+};
+
+type ApiListEntry = Omit<ListEntry, "values"> & {
+  values: Array<Omit<ListEntry["values"][number], "value"> & { value: unknown }>;
+};
+
+export const getListEntries = async (id: string): Promise<ListEntry[]> => {
+  const response = await apiRequest<PagedResult<ApiListEntry>>(`/api/lists/${id}/entries?page=1&pageSize=200`);
+  return response.items.map((entry) => ({
+    ...entry,
+    values: entry.values.map((value) => ({
+      ...value,
+      value:
+        typeof value.value === "string" ||
+        typeof value.value === "number" ||
+        typeof value.value === "boolean" ||
+        value.value === null
+          ? value.value
+          : null,
+    })),
+  }));
+};
+
+export const createListEntry = async (id: string): Promise<ListEntry> =>
+  apiRequest<ListEntry>(`/api/lists/${id}/entries`, {
+    method: "POST",
+    body: JSON.stringify({ values: {} }),
+  });
+
+export const updateEntry = async (
+  entryId: string,
+  values: Record<string, string | number | boolean | null>,
+): Promise<ListEntry> =>
+  apiRequest<ListEntry>(`/api/entries/${entryId}`, {
+    method: "PUT",
+    body: JSON.stringify({ values }),
+  });
+
+export const deleteEntry = async (entryId: string): Promise<void> => {
+  await apiRequest<{ deleted: boolean }>(`/api/entries/${entryId}`, { method: "DELETE" });
+};
+
+export const attachListToPage = async (listId: string, pageId: string): Promise<void> => {
+  await apiRequest<unknown>(`/api/lists/${listId}/attach`, {
+    method: "POST",
+    body: JSON.stringify({ pageId }),
+  });
 };

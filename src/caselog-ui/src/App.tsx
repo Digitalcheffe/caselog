@@ -7,17 +7,33 @@ import {
   type KeyboardEvent,
 } from "react";
 import {
+  attachListToPage,
+  createList,
+  createListEntry,
+  createListField,
   createNotebookPage,
   createShelf,
   createShelfNotebook,
   db,
+  deleteEntry,
+  deleteListField,
   deletePage,
+  getList,
+  getListEntries,
+  getListFields,
+  getLists,
   getNotebookPages,
   getShelfNotebooks,
   getShelves,
+  type ListEntry,
+  type ListFieldType,
+  type ListType,
+  type ListTypeField,
   type Notebook,
   type Page,
   type Shelf,
+  updateEntry,
+  updateList,
   updatePage,
   uploadPageAttachment,
 } from "./api";
@@ -81,6 +97,9 @@ const AppInner = () => {
     db.shelves().map((shelf) => ({ ...shelf, notebookCount: undefined })),
   );
   const [notebooks, setNotebooks] = useState<Notebook[]>(() => db.notebooks());
+  const [lists, setLists] = useState<ListType[]>([]);
+  const [listFields, setListFields] = useState<ListTypeField[]>([]);
+  const [listEntries, setListEntries] = useState<ListEntry[]>([]);
   const [toast, setToast] = useState("");
   const [users, setUsers] = useState<User[]>([
     { id: "u1", name: "Admin", email: "admin@local", role: "admin" },
@@ -150,6 +169,43 @@ const AppInner = () => {
     };
 
     void loadPages();
+  }, [currentRoute, params.id]);
+  useEffect(() => {
+    if (currentRoute !== "/lists") return;
+
+    const loadListTypes = async () => {
+      try {
+        setLists(await getLists());
+      } catch {
+        setLists([]);
+      }
+    };
+
+    void loadListTypes();
+  }, [currentRoute]);
+
+  useEffect(() => {
+    if (currentRoute !== "/lists/:id" || !params.id) return;
+
+    const loadListData = async () => {
+      try {
+        const [listType, fields, entries] = await Promise.all([
+          getList(params.id),
+          getListFields(params.id),
+          getListEntries(params.id),
+        ]);
+        setLists((previous) => {
+          const remaining = previous.filter((item) => item.id !== listType.id);
+          return [...remaining, listType];
+        });
+        setListFields(fields);
+        setListEntries(entries);
+      } catch {
+        setToast("Failed to load list");
+      }
+    };
+
+    void loadListData();
   }, [currentRoute, params.id]);
 
   const filtered = useMemo(
@@ -248,6 +304,38 @@ const AppInner = () => {
         />
       ) : (
         <EmptyState title="Page missing" body="Not found." />
+      );
+      break;
+    }
+    case "/lists":
+      content = (
+        <ListsIndexPage
+          lists={lists}
+          navigate={navigate}
+          onListsChange={setLists}
+          onToast={setToast}
+        />
+      );
+      break;
+    case "/lists/:id": {
+      const list = lists.find((item) => item.id === params.id);
+      content = list ? (
+        <ListDetailPage
+          list={list}
+          fields={listFields}
+          entries={listEntries}
+          pages={pages}
+          onListChange={(nextList) =>
+            setLists((previous) =>
+              previous.map((item) => (item.id === nextList.id ? nextList : item)),
+            )
+          }
+          onFieldsChange={setListFields}
+          onEntriesChange={setListEntries}
+          onToast={setToast}
+        />
+      ) : (
+        <EmptyState title="List missing" body="Not found." />
       );
       break;
     }
@@ -403,6 +491,442 @@ const FollowUps = ({
   );
 };
 
+
+
+const fieldTypeOptions: ListFieldType[] = ["text", "number", "boolean", "date", "select"];
+
+const ListsIndexPage = ({
+  lists,
+  navigate,
+  onListsChange,
+  onToast,
+}: {
+  lists: ListType[];
+  navigate: (path: string) => void;
+  onListsChange: (value: ListType[]) => void;
+  onToast: (message: string) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [counts, setCounts] = useState<Record<string, { fields: number; entries: number }>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const items = await Promise.all(
+        lists.map(async (list) => {
+          try {
+            const [fields, entries] = await Promise.all([getListFields(list.id), getListEntries(list.id)]);
+            return [list.id, { fields: fields.length, entries: entries.length }] as const;
+          } catch {
+            return [list.id, { fields: 0, entries: 0 }] as const;
+          }
+        }),
+      );
+      if (!cancelled) {
+        setCounts(Object.fromEntries(items));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [lists]);
+
+  const handleCreate = async () => {
+    const nextName = name.trim();
+    if (!nextName) return;
+    try {
+      const created = await createList(nextName);
+      onListsChange([...lists, created]);
+      setOpen(false);
+      setName("");
+      navigate(`/lists/${created.id}`);
+    } catch {
+      onToast("Failed to create list");
+    }
+  };
+
+  return (
+    <div>
+      <PageHeader
+        title="Lists"
+        actions={<Button onClick={() => setOpen(true)}>New List</Button>}
+      />
+      {lists.length === 0 ? (
+        <EmptyState title="No lists yet" body="Create your first list to start tracking structured data." />
+      ) : (
+        <CardGrid>
+          {lists.map((list) => (
+            <Card key={list.id}>
+              <h3>{list.name}</h3>
+              <MetadataLine>{list.description || "No description"}</MetadataLine>
+              <p className="muted">Fields: {counts[list.id]?.fields ?? 0}</p>
+              <p className="muted">Entries: {counts[list.id]?.entries ?? 0}</p>
+              <Button onClick={() => navigate(`/lists/${list.id}`)}>Open</Button>
+            </Card>
+          ))}
+        </CardGrid>
+      )}
+      {open ? (
+        <div className="dialog-backdrop">
+          <Card className="modal-card">
+            <h3>New List</h3>
+            <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="List name" />
+            <div className="row">
+              <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
+              <Button onClick={() => void handleCreate()}>Create</Button>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+const ListDetailPage = ({
+  list,
+  fields,
+  entries,
+  pages,
+  onListChange,
+  onFieldsChange,
+  onEntriesChange,
+  onToast,
+}: {
+  list: ListType;
+  fields: ListTypeField[];
+  entries: ListEntry[];
+  pages: Page[];
+  onListChange: (value: ListType) => void;
+  onFieldsChange: (value: ListTypeField[]) => void;
+  onEntriesChange: (value: ListEntry[]) => void;
+  onToast: (message: string) => void;
+}) => {
+  const [draftName, setDraftName] = useState(list.name);
+  const [addingName, setAddingName] = useState("");
+  const [addingType, setAddingType] = useState<ListFieldType>("text");
+  const [deleteFieldId, setDeleteFieldId] = useState<string | null>(null);
+  const [deleteEntryId, setDeleteEntryId] = useState<string | null>(null);
+  const [editingCell, setEditingCell] = useState<string | null>(null);
+  const [cellValue, setCellValue] = useState<string>("");
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [pageSearch, setPageSearch] = useState("");
+  const [selectOptions, setSelectOptions] = useState<Record<string, string[]>>(() => {
+    const raw = window.localStorage.getItem(`list-select-options:${list.id}`);
+    return raw ? (JSON.parse(raw) as Record<string, string[]>) : {};
+  });
+
+  useEffect(() => {
+    setDraftName(list.name);
+  }, [list.name]);
+
+  const saveName = async () => {
+    if (!draftName.trim() || draftName === list.name) return;
+    try {
+      onListChange(await updateList(list.id, { name: draftName.trim() }));
+      onToast("List renamed");
+    } catch {
+      setDraftName(list.name);
+      onToast("Failed to rename list");
+    }
+  };
+
+  const persistSelectOptions = (next: Record<string, string[]>) => {
+    setSelectOptions(next);
+    window.localStorage.setItem(`list-select-options:${list.id}`, JSON.stringify(next));
+  };
+
+  const addField = async () => {
+    const fieldName = addingName.trim();
+    if (!fieldName) return;
+    try {
+      const created = await createListField(list.id, {
+        fieldName,
+        fieldType: addingType,
+        sortOrder: fields.length,
+      });
+      onFieldsChange([...fields, created]);
+      setAddingName("");
+      onToast("Field added");
+    } catch {
+      onToast("Failed to add field");
+    }
+  };
+
+  const updateEntryCell = async (
+    entryId: string,
+    fieldId: string,
+    value: string | number | boolean | null,
+  ) => {
+    const entry = entries.find((item) => item.id === entryId);
+    if (!entry) return;
+
+    const payload: Record<string, string | number | boolean | null> = {};
+    for (const field of fields) {
+      const existing = entry.values.find((item) => item.fieldId === field.id)?.value ?? null;
+      payload[field.id] = existing;
+    }
+    payload[fieldId] = value;
+
+    try {
+      const updated = await updateEntry(entryId, payload);
+      onEntriesChange(entries.map((item) => (item.id === entryId ? updated : item)));
+    } catch {
+      onToast("Failed to save cell");
+    }
+  };
+
+  const addEntry = async () => {
+    try {
+      const created = await createListEntry(list.id);
+      onEntriesChange([created, ...entries]);
+      if (fields[0]) {
+        setEditingCell(`${created.id}:${fields[0].id}`);
+        setCellValue("");
+      }
+    } catch {
+      onToast("Failed to create entry");
+    }
+  };
+
+  const attachToPage = async (pageId: string) => {
+    try {
+      await attachListToPage(list.id, pageId);
+      setAttachOpen(false);
+      onToast("List attached to page");
+    } catch {
+      onToast("Failed to attach list");
+    }
+  };
+
+  const matchingPages = pages.filter((page) => page.title.toLowerCase().includes(pageSearch.toLowerCase()));
+
+  return (
+    <div>
+      <PageHeader
+        title={list.name}
+        actions={<div className="row"><Button variant="secondary" onClick={() => setAttachOpen(true)}>Attach to Page</Button><Button onClick={() => void addEntry()}>New Entry</Button></div>}
+      />
+      <Input value={draftName} onChange={(event) => setDraftName(event.target.value)} onBlur={() => void saveName()} onKeyDown={(event) => event.key === "Enter" && void saveName()} />
+      <div className="list-detail-layout">
+        <Card className="list-fields-panel">
+          <h3>Field Definitions</h3>
+          {fields.map((field) => (
+            <div key={field.id} className="list-field-row">
+              <div>
+                <strong>{field.fieldName}</strong>
+                <div><Badge tone="accent">{field.fieldType}</Badge></div>
+                {field.fieldType === "select" ? (
+                  <SelectOptionManager
+                    options={selectOptions[field.id] ?? []}
+                    onChange={(options) => persistSelectOptions({ ...selectOptions, [field.id]: options })}
+                  />
+                ) : null}
+              </div>
+              <Button variant="danger" onClick={() => setDeleteFieldId(field.id)}>Delete</Button>
+            </div>
+          ))}
+          <div className="list-add-field-form">
+            <Input value={addingName} onChange={(event) => setAddingName(event.target.value)} placeholder="Field name" />
+            <Select value={addingType} onChange={(event) => setAddingType(event.target.value as ListFieldType)}>
+              {fieldTypeOptions.map((option) => <option key={option} value={option}>{option}</option>)}
+            </Select>
+            <Button onClick={() => void addField()}>Add</Button>
+          </div>
+        </Card>
+        <Card>
+          <div className="list-table-wrap">
+            <table className="list-table">
+              <thead>
+                <tr>
+                  {fields.map((field) => <th key={field.id}>{field.fieldName}</th>)}
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((entry) => (
+                  <tr key={entry.id}>
+                    {fields.map((field) => {
+                      const key = `${entry.id}:${field.id}`;
+                      const isEditing = editingCell === key;
+                      const currentValue = entry.values.find((value) => value.fieldId === field.id)?.value;
+                      return (
+                        <td key={field.id} onClick={() => { setEditingCell(key); setCellValue(currentValue == null ? "" : String(currentValue)); }}>
+                          {isEditing ? (
+                            <CellEditor
+                              field={field}
+                              value={cellValue}
+                              options={selectOptions[field.id] ?? []}
+                              onChange={setCellValue}
+                              onBlur={() => {
+                                setEditingCell(null);
+                                const nextValue = field.fieldType === "number" ? (cellValue === "" ? null : Number(cellValue)) : field.fieldType === "boolean" ? cellValue === "true" : (cellValue || null);
+                                void updateEntryCell(entry.id, field.id, nextValue);
+                              }}
+                              onEnter={() => {
+                                setEditingCell(null);
+                                const nextValue = field.fieldType === "number" ? (cellValue === "" ? null : Number(cellValue)) : field.fieldType === "boolean" ? cellValue === "true" : (cellValue || null);
+                                void updateEntryCell(entry.id, field.id, nextValue);
+                              }}
+                            />
+                          ) : (
+                            <span>{String(currentValue ?? "")}</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td><Button variant="danger" onClick={() => setDeleteEntryId(entry.id)}>Delete</Button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      </div>
+      <ConfirmDialog
+        open={Boolean(deleteFieldId)}
+        title="Delete field"
+        body="Delete this field definition?"
+        onCancel={() => setDeleteFieldId(null)}
+        onConfirm={() => {
+          const fieldId = deleteFieldId;
+          setDeleteFieldId(null);
+          if (!fieldId) return;
+          void (async () => {
+            try {
+              await deleteListField(list.id, fieldId);
+              onFieldsChange(fields.filter((field) => field.id !== fieldId));
+            } catch {
+              onToast("Failed to delete field");
+            }
+          })();
+        }}
+      />
+      <ConfirmDialog
+        open={Boolean(deleteEntryId)}
+        title="Delete entry"
+        body="Delete this entry?"
+        onCancel={() => setDeleteEntryId(null)}
+        onConfirm={() => {
+          const entryId = deleteEntryId;
+          setDeleteEntryId(null);
+          if (!entryId) return;
+          void (async () => {
+            try {
+              await deleteEntry(entryId);
+              onEntriesChange(entries.filter((entry) => entry.id !== entryId));
+            } catch {
+              onToast("Failed to delete entry");
+            }
+          })();
+        }}
+      />
+      {attachOpen ? (
+        <div className="dialog-backdrop">
+          <Card className="modal-card">
+            <h3>Attach to Page</h3>
+            <Input placeholder="Search pages" value={pageSearch} onChange={(event) => setPageSearch(event.target.value)} />
+            <div className="attach-page-results">
+              {matchingPages.map((page) => (
+                <div key={page.id} className="row">
+                  <span>{page.title}</span>
+                  <Button onClick={() => void attachToPage(page.id)}>Attach</Button>
+                </div>
+              ))}
+            </div>
+            <Button variant="secondary" onClick={() => setAttachOpen(false)}>Close</Button>
+          </Card>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+const SelectOptionManager = ({
+  options,
+  onChange,
+}: {
+  options: string[];
+  onChange: (value: string[]) => void;
+}) => {
+  const [draft, setDraft] = useState("");
+  return (
+    <div>
+      <div className="chip-list">
+        {options.map((option) => (
+          <span key={option} className="tag-chip">
+            {option}
+            <button type="button" onClick={() => onChange(options.filter((item) => item !== option))}>✕</button>
+          </span>
+        ))}
+      </div>
+      <div className="row">
+        <Input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Add option" />
+        <Button
+          variant="secondary"
+          onClick={() => {
+            const value = draft.trim();
+            if (!value || options.includes(value)) return;
+            onChange([...options, value]);
+            setDraft("");
+          }}
+        >
+          Add
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+const CellEditor = ({
+  field,
+  value,
+  options,
+  onChange,
+  onBlur,
+  onEnter,
+}: {
+  field: ListTypeField;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+  onBlur: () => void;
+  onEnter: () => void;
+}) => {
+  if (field.fieldType === "boolean") {
+    return (
+      <Checkbox
+        checked={value === "true"}
+        onChange={(event) => {
+          onChange(String(event.target.checked));
+          onEnter();
+        }}
+      />
+    );
+  }
+
+  if (field.fieldType === "select") {
+    return (
+      <Select value={value} onChange={(event) => onChange(event.target.value)} onBlur={onBlur}>
+        <option value="">--</option>
+        {options.map((option) => (
+          <option key={option} value={option}>{option}</option>
+        ))}
+      </Select>
+    );
+  }
+
+  return (
+    <Input
+      autoFocus
+      type={field.fieldType === "number" ? "number" : field.fieldType === "date" ? "date" : "text"}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      onBlur={onBlur}
+      onKeyDown={(event) => event.key === "Enter" && onEnter()}
+    />
+  );
+};
 const ShelvesPage = ({
   shelves,
   notebooks,
