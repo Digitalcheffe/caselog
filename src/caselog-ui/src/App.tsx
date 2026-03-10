@@ -1,9 +1,9 @@
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
   type ChangeEvent,
+  type FormEvent,
   type KeyboardEvent,
 } from "react";
 import {
@@ -24,7 +24,6 @@ import {
   getTwoFactorSetup,
   revokeApiKey,
   revokeAuthSession,
-  db,
   deleteAdminUser,
   deleteEntry,
   deleteListField,
@@ -40,6 +39,10 @@ import {
   getNotebookPages,
   getShelfNotebooks,
   getShelves,
+  getPages,
+  getRecentPages,
+  getFollowUpPages,
+  searchPages,
   type ListEntry,
   type AdminUser,
   type ListFieldType,
@@ -60,6 +63,7 @@ import {
   updateProfilePassword,
   uploadPageAttachment,
 } from "./api";
+import { authStorage, type ApiError, apiRequest } from "./api/client";
 import { AppShell } from "./components/layout";
 import {
   Badge,
@@ -76,6 +80,7 @@ import {
   TagList,
   Textarea,
   Toast,
+  Spinner,
 } from "./components/ui";
 import { useRouter } from "./hooks/useRouter";
 import { ThemeProvider, useTheme } from "./hooks/useTheme";
@@ -101,6 +106,8 @@ const routes = [
   "/admin/users/new",
   "/admin/users/:id",
   "/dev/components",
+  "/login",
+  "/logout",
 ];
 const AppInner = () => {
   const { theme, toggleTheme } = useTheme();
@@ -109,27 +116,28 @@ const AppInner = () => {
     new URLSearchParams(window.location.search).get("q") ?? "",
   );
   const [debouncedSearch, setDebouncedSearch] = useState(search);
-  const [pages, setPages] = useState<Page[]>(() => db.pages());
-  const [shelves, setShelves] = useState<(Shelf & { notebookCount?: number })[]>(() =>
-    db.shelves().map((shelf) => ({ ...shelf, notebookCount: undefined })),
-  );
-  const [notebooks, setNotebooks] = useState<Notebook[]>(() => db.notebooks());
+  const [pages, setPages] = useState<Page[]>([]);
+  const [shelves, setShelves] = useState<(Shelf & { notebookCount?: number })[]>([]);
+  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [lists, setLists] = useState<ListType[]>([]);
   const [listFields, setListFields] = useState<ListTypeField[]>([]);
   const [listEntries, setListEntries] = useState<ListEntry[]>([]);
   const [toast, setToast] = useState("");
   const [currentUserRole] = useState<"admin" | "member">("admin");
-  const [impersonatingUser, setImpersonatingUser] = useState<{ id: string; name: string } | null>(() => {
-    const token = window.localStorage.getItem("caselog-impersonate-token");
-    const name = window.localStorage.getItem("caselog-impersonate-name");
-    const id = window.localStorage.getItem("caselog-impersonate-user-id");
-    if (!token || !name || !id) {
-      return null;
-    }
-
-    return { id, name };
-  });
+  const [impersonatingUser, setImpersonatingUser] = useState<{ id: string; name: string } | null>(null);
   const isAdmin = currentUserRole === "admin";
+
+  const token = authStorage.getToken();
+  const isAuthenticated = Boolean(token);
+
+  useEffect(() => {
+    if (!isAuthenticated && pathname !== "/login") {
+      navigate("/login");
+    }
+    if (isAuthenticated && pathname === "/login") {
+      navigate("/dashboard");
+    }
+  }, [isAuthenticated, navigate, pathname]);
 
   useEffect(() => {
     if (!toast) return;
@@ -162,17 +170,25 @@ const AppInner = () => {
   }, [debouncedSearch]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     const loadShelves = async () => {
       try {
         const fetchedShelves = await getShelves();
         setShelves(fetchedShelves);
-      } catch {
-        setShelves(db.shelves().map((shelf) => ({ ...shelf, notebookCount: undefined })));
+      } catch (error) {
+        const apiError = error as ApiError;
+        setToast(`Error ${apiError.status}: ${apiError.message}`);
       }
     };
 
     void loadShelves();
-  }, []);
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    void getPages().then(setPages).catch((error: ApiError) => setToast(`Error ${error.status}: ${error.message}`));
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (currentRoute !== "/shelves/:id" || !params.id) return;
@@ -180,8 +196,9 @@ const AppInner = () => {
     const loadNotebooks = async () => {
       try {
         setNotebooks(await getShelfNotebooks(params.id));
-      } catch {
-        setNotebooks(db.notebooks().filter((notebook) => notebook.shelfId === params.id));
+      } catch (error) {
+        const apiError = error as ApiError;
+        setToast(`Error ${apiError.status}: ${apiError.message}`);
       }
     };
 
@@ -198,8 +215,9 @@ const AppInner = () => {
           const remaining = previous.filter((page) => page.notebookId !== params.id);
           return [...remaining, ...notebookPages];
         });
-      } catch {
-        setPages(db.pages());
+      } catch (error) {
+        const apiError = error as ApiError;
+        setToast(`Error ${apiError.status}: ${apiError.message}`);
       }
     };
 
@@ -243,16 +261,6 @@ const AppInner = () => {
     void loadListData();
   }, [currentRoute, params.id]);
 
-  const filtered = useMemo(
-    () =>
-      pages.filter((p) =>
-        `${p.title} ${p.content} ${p.tags.join(" ")}`
-          .toLowerCase()
-          .includes(debouncedSearch.toLowerCase()),
-      ),
-    [debouncedSearch, pages],
-  );
-
   const addQuickCapture = (content: string) => {
     const now = new Date().toISOString();
     const nextItem: Page = {
@@ -268,15 +276,22 @@ const AppInner = () => {
     };
     const next = [...pages, nextItem];
     setPages(next);
-    db.setPages(next);
     setToast("Quick capture saved");
   };
 
   let content: JSX.Element;
   switch (currentRoute) {
+    case "/login":
+      content = <LoginPage navigate={navigate} onToast={setToast} />;
+      break;
+    case "/logout":
+      authStorage.clearSession();
+      navigate("/login");
+      content = <EmptyState title="Signing out" body="Redirecting to login..." />;
+      break;
     case "/":
     case "/dashboard":
-      content = <Dashboard pages={pages} onQuickCapture={addQuickCapture} />;
+      content = <Dashboard onQuickCapture={addQuickCapture} />;
       break;
     case "/shelves":
       content = (
@@ -376,7 +391,7 @@ const AppInner = () => {
       break;
     }
     case "/search":
-      content = <SearchPage results={filtered} />;
+      content = <SearchPage query={debouncedSearch} />;
       break;
     case "/mindmaps":
       content = <MindMapsIndexPage navigate={navigate} onToast={setToast} />;
@@ -385,7 +400,7 @@ const AppInner = () => {
       content = params.id ? <MindMapEditorPage id={params.id} onToast={setToast} /> : <EmptyState title="Mind map missing" body="Not found." />;
       break;
     case "/followups":
-      content = <FollowUps pages={pages} setPages={setPages} />;
+      content = <FollowUps />;
       break;
     case "/unorganized":
       content = (
@@ -432,6 +447,13 @@ const AppInner = () => {
       );
   }
 
+  if (pathname === "/login") {
+    return <>
+      {content}
+      {toast && <Toast message={toast} />}
+    </>;
+  }
+
   return (
     <>
       {impersonatingUser ? (
@@ -447,9 +469,6 @@ const AppInner = () => {
                 } catch {
                   // noop
                 } finally {
-                  window.localStorage.removeItem("caselog-impersonate-token");
-                  window.localStorage.removeItem("caselog-impersonate-name");
-                  window.localStorage.removeItem("caselog-impersonate-user-id");
                   setImpersonatingUser(null);
                   window.location.reload();
                 }
@@ -476,93 +495,158 @@ const AppInner = () => {
   );
 };
 
+const LoginPage = ({ navigate, onToast }: { navigate: (path: string) => void; onToast: (message: string) => void }) => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiRequest<{ token: string; user?: unknown }>("/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+      authStorage.setSession(response.token, response.user ?? { email });
+      onToast("Logged in");
+      navigate("/dashboard");
+    } catch (err) {
+      const apiError = err as ApiError;
+      setError(apiError.message || "Login failed");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-page">
+      <Card>
+        <PageHeader title="Login" subtitle="Sign in to Caselog" />
+        <form onSubmit={(event) => void handleSubmit(event)}>
+          <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" />
+          <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" />
+          {error ? <p className="muted">{error}</p> : null}
+          <Button type="submit" disabled={loading}>{loading ? "Signing in..." : "Sign in"}</Button>
+        </form>
+      </Card>
+    </div>
+  );
+};
+
 const Dashboard = ({
-  pages,
   onQuickCapture,
 }: {
-  pages: Page[];
   onQuickCapture: (value: string) => void;
-}) => (
-  <div>
-    <PageHeader title="Dashboard" />
-    <CardGrid>
-      {pages.slice(0, 3).map((p) => (
-        <Card key={p.id}>
-          <MetadataLine>PAGE</MetadataLine>
-          <h3>{p.title}</h3>
-        </Card>
-      ))}
-    </CardGrid>
-    <Card>
-      <MetadataLine>
-        Open follow-ups{" "}
-        <Badge tone="accent">{pages.filter((p) => p.followUp).length}</Badge>
-      </MetadataLine>
-    </Card>
-    <Card>
-      <h3>Quick capture</h3>
-      <Textarea
-        onBlur={(e) => e.target.value.trim() && onQuickCapture(e.target.value)}
-      />
-    </Card>
-  </div>
-);
-const SearchPage = ({ results }: { results: Page[] }) => (
-  <div>
-    <PageHeader title="Search" subtitle="Hint: tag:homelab type:list" />
-    {results.length === 0 ? (
-      <EmptyState title="No results" body="Try adjusting query." />
-    ) : (
-      <CardGrid>
-        {results.map((r) => (
-          <Card key={r.id}>
-            <MetadataLine>
-              {r.notebookId ? "notebook" : "unorganized"}
-            </MetadataLine>
-            <h3>{r.title}</h3>
-            <p>{r.content.slice(0, 90)}</p>
-            <TagList tags={r.tags} />
-          </Card>
-        ))}
-      </CardGrid>
-    )}
-  </div>
-);
-
-const FollowUps = ({
-  pages,
-  setPages,
-}: {
-  pages: Page[];
-  setPages: (v: Page[]) => void;
 }) => {
-  const open = pages.filter((p) => p.followUp);
-  if (open.length === 0)
-    return <EmptyState title="No follow-ups" body="Everything is clear." />;
+  const [recentPages, setRecentPages] = useState<Page[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void getRecentPages()
+      .then((items) => setRecentPages(items))
+      .catch((err: ApiError) => setError(err.status ? `Error ${err.status}: ${err.message}` : "Network error — check connection"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div>
+      <PageHeader title="Dashboard" />
+      {loading ? <Card><Spinner /></Card> : null}
+      {error ? <Card><p>{error}</p></Card> : null}
+      {!loading && !error ? (
+        <CardGrid>
+          {recentPages.slice(0, 3).map((p) => (
+            <Card key={p.id}>
+              <MetadataLine>PAGE</MetadataLine>
+              <h3>{p.title}</h3>
+            </Card>
+          ))}
+        </CardGrid>
+      ) : null}
+      <Card>
+        <MetadataLine>
+          Open follow-ups <Badge tone="accent">{recentPages.filter((p) => p.followUp).length}</Badge>
+        </MetadataLine>
+      </Card>
+      <Card>
+        <h3>Quick capture</h3>
+        <Textarea onBlur={(e) => e.target.value.trim() && onQuickCapture(e.target.value)} />
+      </Card>
+    </div>
+  );
+};
+
+const FollowUps = () => {
+  const [open, setOpen] = useState<Page[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void getFollowUpPages()
+      .then(setOpen)
+      .catch((err: ApiError) => setError(err.status ? `Error ${err.status}: ${err.message}` : "Network error — check connection"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <Card><Spinner /></Card>;
+  if (error) return <Card><p>{error}</p></Card>;
+  if (open.length === 0) return <EmptyState title="No follow-ups" body="Everything is clear." />;
+
   return (
     <div>
       <PageHeader title="Follow-ups" />
       {open.map((p) => (
         <Card key={p.id}>
           <h3>{p.title}</h3>
-          <Button
-            onClick={() => {
-              const next = pages.map((x) =>
-                x.id === p.id ? { ...x, followUp: false } : x,
-              );
-              setPages(next);
-              db.setPages(next);
-            }}
-          >
-            Clear
-          </Button>
         </Card>
       ))}
     </div>
   );
 };
 
+const SearchPage = ({ query }: { query: string }) => {
+  const [results, setResults] = useState<Page[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      setError(null);
+      return;
+    }
+    setLoading(true);
+    void searchPages(query)
+      .then(setResults)
+      .catch((err: ApiError) => setError(err.status ? `Error ${err.status}: ${err.message}` : "Network error — check connection"))
+      .finally(() => setLoading(false));
+  }, [query]);
+
+  return (
+    <div>
+      <PageHeader title="Search" subtitle={`Results for "${query || "..."}"`} />
+      {loading ? <Card><Spinner /></Card> : null}
+      {error ? <Card><p>{error}</p></Card> : null}
+      {!loading && !error && query && results.length === 0 ? <EmptyState title="No matches" body="Try a different search." /> : null}
+      {!loading && !error && results.length > 0 ? (
+        <CardGrid>
+          {results.map((r) => (
+            <Card key={r.id}>
+              <MetadataLine>{r.notebookId ? "notebook" : "unorganized"}</MetadataLine>
+              <h3>{r.title}</h3>
+              <p>{r.content.slice(0, 90)}</p>
+              <TagList tags={r.tags} />
+            </Card>
+          ))}
+        </CardGrid>
+      ) : null}
+    </div>
+  );
+};
 
 const fieldTypeOptions: ListFieldType[] = ["text", "number", "boolean", "date", "select"];
 
@@ -682,10 +766,7 @@ const ListDetailPage = ({
   const [cellValue, setCellValue] = useState<string>("");
   const [attachOpen, setAttachOpen] = useState(false);
   const [pageSearch, setPageSearch] = useState("");
-  const [selectOptions, setSelectOptions] = useState<Record<string, string[]>>(() => {
-    const raw = window.localStorage.getItem(`list-select-options:${list.id}`);
-    return raw ? (JSON.parse(raw) as Record<string, string[]>) : {};
-  });
+  const [selectOptions, setSelectOptions] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     setDraftName(list.name);
@@ -704,7 +785,6 @@ const ListDetailPage = ({
 
   const persistSelectOptions = (next: Record<string, string[]>) => {
     setSelectOptions(next);
-    window.localStorage.setItem(`list-select-options:${list.id}`, JSON.stringify(next));
   };
 
   const addField = async () => {
@@ -1247,7 +1327,6 @@ const PageEditor = ({
   const savePageAndStore = (nextDraft: Page) => {
     const nextPages = pages.map((p) => (p.id === nextDraft.id ? nextDraft : p));
     setPages(nextPages);
-    db.setPages(nextPages);
     setLastSavedDraft(nextDraft);
   };
 
@@ -1372,7 +1451,6 @@ const PageEditor = ({
       await deletePage(draft.id);
       const nextPages = pages.filter((p) => p.id !== draft.id);
       setPages(nextPages);
-      db.setPages(nextPages);
       setConfirmDeleteOpen(false);
       navigate(
         draft.notebookId ? `/notebooks/${draft.notebookId}` : "/unorganized",
@@ -2542,9 +2620,6 @@ const AdminUsers = ({
                         void (async () => {
                           try {
                             const result = await impersonateAdminUser(user.id);
-                            window.localStorage.setItem("caselog-impersonate-token", result.token);
-                            window.localStorage.setItem("caselog-impersonate-name", user.name);
-                            window.localStorage.setItem("caselog-impersonate-user-id", user.id);
                             onImpersonatingChange({ id: user.id, name: user.name });
                             window.location.reload();
                           } catch {

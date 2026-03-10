@@ -1,40 +1,81 @@
 export type ApiEnvelope<T> = {
   data: T | null;
-  error?: string | null;
+  error?: string | { message?: string } | null;
   meta?: Record<string, unknown>;
 };
 
 export type ApiError = {
   status: number;
   message: string;
+  details?: unknown;
 };
 
-const API_KEY_STORAGE = 'caselog-api-key';
+const TOKEN_STORAGE_KEY = 'caselog-token';
+const USER_STORAGE_KEY = 'caselog-user';
 
-export const apiKeyStorage = {
-  get: (): string | null => window.localStorage.getItem(API_KEY_STORAGE),
-  set: (value: string): void => window.localStorage.setItem(API_KEY_STORAGE, value),
-  clear: (): void => window.localStorage.removeItem(API_KEY_STORAGE)
+export const authStorage = {
+  getToken: (): string | null => window.localStorage.getItem(TOKEN_STORAGE_KEY),
+  setSession: (token: string, user: unknown): void => {
+    window.localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    window.localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+  },
+  clearSession: (): void => {
+    window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+    window.localStorage.removeItem(USER_STORAGE_KEY);
+  },
 };
 
-const unwrapEnvelope = async <T>(response: Response): Promise<T> => {
-  const payload = (await response.json()) as ApiEnvelope<T>;
+const logApiError = (params: {
+  method: string;
+  url: string;
+  status: number;
+  requestBody?: string;
+  responseBody?: unknown;
+}) => {
+  console.error('API request failed', params);
+};
 
-  if (!response.ok || payload.error) {
+const unwrapEnvelope = async <T>(response: Response, method: string, url: string, requestBody?: string): Promise<T> => {
+  let payload: ApiEnvelope<T> | null = null;
+  try {
+    payload = (await response.json()) as ApiEnvelope<T>;
+  } catch {
+    payload = null;
+  }
+
+  if (response.status === 401) {
+    authStorage.clearSession();
+    window.location.assign('/login');
+  }
+
+  if (!response.ok || payload?.error) {
+    logApiError({
+      method,
+      url,
+      status: response.status,
+      requestBody,
+      responseBody: payload,
+    });
     throw {
       status: response.status,
-      message: payload.error ?? response.statusText
+      message:
+        typeof payload?.error === 'string'
+          ? payload.error
+          : (payload?.error as { message?: string } | null)?.message ?? response.statusText,
+      details: payload,
     } satisfies ApiError;
   }
 
-  return payload.data as T;
+  return payload?.data as T;
 };
 
 export const apiRequest = async <T>(path: string, options: RequestInit = {}): Promise<T> => {
-  const token = apiKeyStorage.get();
+  const token = authStorage.getToken();
+  const method = options.method ?? 'GET';
   const headers = new Headers(options.headers ?? {});
+  const requestBody = typeof options.body === 'string' ? options.body : undefined;
 
-  if (!headers.has('Content-Type') && options.body) {
+  if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
 
@@ -42,10 +83,29 @@ export const apiRequest = async <T>(path: string, options: RequestInit = {}): Pr
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const response = await fetch(path, {
-    ...options,
-    headers
-  });
+  try {
+    const response = await fetch(path, {
+      ...options,
+      headers,
+    });
 
-  return unwrapEnvelope<T>(response);
+    return unwrapEnvelope<T>(response, method, path, requestBody);
+  } catch (error) {
+    if ((error as ApiError).status) {
+      throw error;
+    }
+
+    logApiError({
+      method,
+      url: path,
+      status: 0,
+      requestBody,
+      responseBody: error,
+    });
+    throw {
+      status: 0,
+      message: 'Network error — check connection',
+      details: error,
+    } satisfies ApiError;
+  }
 };
