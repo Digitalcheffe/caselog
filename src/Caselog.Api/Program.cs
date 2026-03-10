@@ -9,7 +9,9 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 var port = Environment.GetEnvironmentVariable("CASELOG_PORT") ?? "5000";
-var dataPath = Environment.GetEnvironmentVariable("CASELOG_DB_PATH") ?? "/data/caselog.db";
+var dataPath = Environment.GetEnvironmentVariable("CASELOG_DB_PATH")
+    ?? Environment.GetEnvironmentVariable("CASELOG_DATA_PATH")
+    ?? "/data/caselog.db";
 
 var dataDirectory = Path.GetDirectoryName(dataPath);
 if (!string.IsNullOrWhiteSpace(dataDirectory))
@@ -35,7 +37,16 @@ await using (var scope = app.Services.CreateAsyncScope())
     var dbContext = scope.ServiceProvider.GetRequiredService<CaselogDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
+
     await dbContext.Database.MigrateAsync();
+
+    if (await HasMigrationHistoryWithoutCoreSchemaAsync(dbContext))
+    {
+        logger.LogWarning("Detected migration history without required core tables. Rebuilding migration history and re-applying migrations.");
+        await dbContext.Database.ExecuteSqlRawAsync("DROP TABLE IF EXISTS \"__EFMigrationsHistory\";");
+        await dbContext.Database.MigrateAsync();
+    }
+
     await dbContext.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
 
     try
@@ -79,6 +90,33 @@ await using (var scope = app.Services.CreateAsyncScope())
     {
         logger.LogError(ex, "Failed while seeding default admin user and API key.");
     }
+}
+
+static async Task<bool> HasMigrationHistoryWithoutCoreSchemaAsync(CaselogDbContext dbContext)
+{
+    await using var connection = dbContext.Database.GetDbConnection();
+    if (connection.State != System.Data.ConnectionState.Open)
+    {
+        await connection.OpenAsync();
+    }
+
+    await using var command = connection.CreateCommand();
+    command.CommandText =
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%';";
+
+    var tableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    await using var reader = await command.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        if (!reader.IsDBNull(0))
+        {
+            tableNames.Add(reader.GetString(0));
+        }
+    }
+
+    return tableNames.Contains("__EFMigrationsHistory")
+        && !tableNames.Contains("Users")
+        && tableNames.Count == 1;
 }
 
 app.UseWhen(
