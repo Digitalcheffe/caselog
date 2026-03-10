@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { db, type Page } from './api';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { db, type Page, updatePage } from './api';
 import { AppShell } from './components/layout';
 import { Badge, Button, Card, CardGrid, Checkbox, ConfirmDialog, EmptyState, Input, MetadataLine, PageHeader, Select, TagList, Textarea, Toast } from './components/ui';
 import { useRouter } from './hooks/useRouter';
@@ -52,7 +52,7 @@ const AppInner = () => {
       break;
     case '/pages/:id': {
       const page = pages.find((p) => p.id === params.id);
-      content = page ? <PageEditor page={page} pages={pages} setPages={setPages} onSaved={() => setToast('Page auto-saved')} /> : <EmptyState title="Page missing" body="Not found." />;
+      content = page ? <PageEditor page={page} pages={pages} setPages={setPages} /> : <EmptyState title="Page missing" body="Not found." />;
       break;
     }
     case '/search':
@@ -92,20 +92,49 @@ const FollowUps = ({ pages, setPages }: { pages: Page[]; setPages: (v: Page[]) =
   return <div><PageHeader title="Follow-ups" />{open.map((p) => <Card key={p.id}><h3>{p.title}</h3><Button onClick={() => { const next = pages.map((x) => x.id === p.id ? { ...x, followUp: false } : x); setPages(next); db.setPages(next); }}>Clear</Button></Card>)}</div>;
 };
 
-const PageEditor = ({ page, pages, setPages, onSaved }: { page: Page; pages: Page[]; setPages: (v: Page[]) => void; onSaved: () => void }) => {
+const PageEditor = ({ page, pages, setPages }: { page: Page; pages: Page[]; setPages: (v: Page[]) => void }) => {
   const [draft, setDraft] = useState(page);
+  const [saveState, setSaveState] = useState<'saved' | 'saving' | 'error'>('saved');
+  const [lastSavedDraft, setLastSavedDraft] = useState(page);
+  const editorRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => setDraft(page), [page]);
+  useEffect(() => setLastSavedDraft(page), [page]);
   useEffect(() => {
+    if (editorRef.current && editorRef.current.innerHTML !== draft.content) {
+      editorRef.current.innerHTML = draft.content;
+    }
+  }, [draft.content]);
+
+  const persistDraft = async (nextDraft: Page) => {
+    setSaveState('saving');
+    try {
+      await updatePage(nextDraft.id, { content: nextDraft.content, title: nextDraft.title, visibility: nextDraft.visibility, followUp: nextDraft.followUp });
+      const nextPages = pages.map((p) => p.id === nextDraft.id ? nextDraft : p);
+      setPages(nextPages);
+      db.setPages(nextPages);
+      setLastSavedDraft(nextDraft);
+      setSaveState('saved');
+    } catch {
+      setSaveState('error');
+    }
+  };
+
+  useEffect(() => {
+    if (draft.content === lastSavedDraft.content) return;
     const id = window.setTimeout(() => {
-      const next = pages.map((p) => p.id === draft.id ? draft : p);
-      setPages(next);
-      db.setPages(next);
-      onSaved();
+      void persistDraft(draft);
     }, 1000);
     return () => window.clearTimeout(id);
-  }, [draft, onSaved, pages, setPages]);
+  }, [draft, lastSavedDraft.content]);
 
-  return <div><MetadataLine>Home / Notebook / {page.title}</MetadataLine><PageHeader title={page.title} /><div className="editor-layout"><Card><Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /><div className="editor" contentEditable suppressContentEditableWarning onInput={(e) => setDraft({ ...draft, content: (e.target as HTMLDivElement).innerText })}>{draft.content}</div></Card><div className="page-meta-panel"><Card><h3>Metadata</h3><TagList tags={draft.tags} /><Select value={draft.visibility} onChange={(e) => setDraft({ ...draft, visibility: e.target.value as Page['visibility'] })}><option value="private">private</option><option value="internal">internal</option><option value="public">public</option></Select><label><Checkbox checked={draft.followUp} onChange={(e) => setDraft({ ...draft, followUp: e.target.checked })} /> Follow-up flag</label><p>Attachments count: {draft.attachments}</p></Card></div></div></div>;
+  const runCommand = (command: string, value?: string) => {
+    document.execCommand(command, false, value);
+    const html = editorRef.current?.innerHTML ?? '';
+    setDraft((previous) => ({ ...previous, content: html }));
+  };
+
+  return <div><MetadataLine>Home / Notebook / {page.title}</MetadataLine><PageHeader title={page.title} actions={<div className="row"><span className="save-indicator">{saveState === 'saving' ? 'Saving...' : saveState === 'error' ? 'Save failed' : 'Saved'}</span><Button onClick={() => void persistDraft(draft)}>Save</Button><Button variant="secondary" onClick={() => setDraft(lastSavedDraft)}>Cancel</Button></div>} /><div className="editor-layout"><Card><Input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /><div className="editor-shell"><div className="editor-toolbar"><div className="toolbar-group"><button type="button" className="toolbar-button" onClick={() => runCommand('bold')}>B</button><button type="button" className="toolbar-button" onClick={() => runCommand('italic')}>I</button><button type="button" className="toolbar-button" onClick={() => runCommand('underline')}>U</button><button type="button" className="toolbar-button" onClick={() => runCommand('strikeThrough')}>S</button></div><div className="toolbar-divider" /><div className="toolbar-group"><button type="button" className="toolbar-button" onClick={() => runCommand('formatBlock', '<h1>')}>H1</button><button type="button" className="toolbar-button" onClick={() => runCommand('formatBlock', '<h2>')}>H2</button><button type="button" className="toolbar-button" onClick={() => runCommand('formatBlock', '<h3>')}>H3</button></div><div className="toolbar-divider" /><div className="toolbar-group"><button type="button" className="toolbar-button" onClick={() => runCommand('insertUnorderedList')}>• List</button><button type="button" className="toolbar-button" onClick={() => runCommand('insertOrderedList')}>1. List</button></div><div className="toolbar-divider" /><div className="toolbar-group"><button type="button" className="toolbar-button" onClick={() => runCommand('formatBlock', '<blockquote>')}>❝</button><button type="button" className="toolbar-button" onClick={() => runCommand('formatBlock', '<pre>')}>Code</button></div><div className="toolbar-divider" /><div className="toolbar-group"><button type="button" className="toolbar-button" onClick={() => runCommand('justifyLeft')}>L</button><button type="button" className="toolbar-button" onClick={() => runCommand('justifyCenter')}>C</button><button type="button" className="toolbar-button" onClick={() => runCommand('justifyRight')}>R</button></div><div className="toolbar-divider" /><div className="toolbar-group"><button type="button" className="toolbar-button" onClick={() => { const link = window.prompt('Enter URL', 'https://'); if (link) runCommand('createLink', link); }}>Link</button><button type="button" className="toolbar-button" onClick={() => runCommand('removeFormat')}>Clear</button></div></div><div ref={editorRef} className="editor" contentEditable suppressContentEditableWarning data-placeholder="Start writing..." onInput={(e) => setDraft({ ...draft, content: (e.target as HTMLDivElement).innerHTML })}>{draft.content}</div></div></Card><div className="page-meta-panel"><Card><h3>Metadata</h3><TagList tags={draft.tags} /><Select value={draft.visibility} onChange={(e) => setDraft({ ...draft, visibility: e.target.value as Page['visibility'] })}><option value="private">private</option><option value="internal">internal</option><option value="public">public</option></Select><label><Checkbox checked={draft.followUp} onChange={(e) => setDraft({ ...draft, followUp: e.target.checked })} /> Follow-up flag</label><p>Attachments count: {draft.attachments}</p></Card></div></div></div>;
 };
 
 const SettingsPage = () => <div><PageHeader title="Settings" /><Card><h3>API keys</h3><Button>Generate</Button></Card><Card><h3>Profile</h3><Input placeholder="Email" /><Input placeholder="Current password" type="password" /></Card><Card><h3>2FA</h3><p>Enroll via QR code flow placeholder.</p></Card></div>;

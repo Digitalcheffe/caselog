@@ -178,7 +178,17 @@ button { font: inherit; }
 .row { display: flex; gap: 8px; align-items: center; }
 .editor-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; align-items: start; }
 .page-meta-panel { position: sticky; top: calc(var(--top-nav-height) + 16px); }
-.editor { min-height: 220px; padding: 10px; border: 1px solid var(--color-border); margin-top: 8px; border-radius: 6px; }
+.editor-shell { border: 1px solid var(--color-border); border-radius: 8px; margin-top: 8px; overflow: hidden; }
+.editor-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px; background: var(--color-bg-elevated); border-bottom: 1px solid var(--color-border); }
+.toolbar-group { display: flex; align-items: center; gap: 6px; }
+.toolbar-divider { width: 1px; height: 20px; background: var(--color-border); }
+.toolbar-button { border: 1px solid transparent; background: transparent; color: var(--color-text-primary); border-radius: 6px; padding: 6px 8px; cursor: pointer; }
+.toolbar-button:hover { border-color: var(--color-border); color: var(--color-accent); }
+.toolbar-button:focus { outline: 2px solid var(--color-accent); }
+.editor { min-height: 400px; padding: 12px; }
+.editor:focus { outline: none; }
+.editor:empty:before { content: attr(data-placeholder); color: var(--color-text-secondary); }
+.save-indicator { color: var(--color-text-secondary); font-size: .875rem; margin-right: 8px; }
 .toast { position: fixed; right: 16px; bottom: 16px; background: var(--color-bg-elevated); border: 1px solid var(--color-border); padding: 10px 12px; border-radius: 6px; }
 .dialog-backdrop { position: fixed; inset: 0; background: #0008; display: grid; place-items: center; width: 100%; }
 .skeleton { height: 120px; border-radius: 8px; background: linear-gradient(90deg,var(--color-bg-elevated),var(--color-bg-surface),var(--color-bg-elevated)); animation: pulse 1.2s infinite; }
