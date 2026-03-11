@@ -200,15 +200,5 @@ public partial class CaselogDbContextModelSnapshot : ModelSnapshot
             b.ToTable("FollowUps");
         });
 
-        modelBuilder.Entity<SearchIndexEntry>(b =>
-        {
-            b.Property<string>("Content");
-            b.Property<string>("EntityId");
-            b.Property<string>("EntityType");
-            b.Property<string>("Summary");
-            b.Property<string>("Tags");
-            b.Property<string>("Title");
-            b.ToTable("search_index");
-        });
     }
 }

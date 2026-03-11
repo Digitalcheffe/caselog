@@ -23,7 +23,6 @@ public class CaselogDbContext(DbContextOptions<CaselogDbContext> options) : DbCo
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
-        modelBuilder.Entity<SearchIndexEntry>().HasNoKey().ToTable("search_index", table => table.ExcludeFromMigrations());
         modelBuilder.Entity<User>().HasIndex(x => x.Email).IsUnique();
         modelBuilder.Entity<User>().Property(x => x.Role).HasConversion<string>();
         modelBuilder.Entity<UserApiKey>().HasOne(x => x.User).WithMany(x => x.ApiKeys).HasForeignKey(x => x.UserId);
