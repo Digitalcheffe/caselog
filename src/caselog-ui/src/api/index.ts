@@ -87,7 +87,9 @@ export type ListEntry = {
 
 export type ProfileResponse = {
   id: string;
-  name: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
   email: string;
   role: "admin" | "member";
   twoFactorEnabled: boolean;
@@ -119,6 +121,12 @@ export type MindMapDetail = {
   title: string;
   nodes: MindMapNode[];
   rootNode: MindMapNode;
+};
+
+type ApiMindMapDetail = {
+  id: string;
+  title: string;
+  rootNode: ApiMindMapNode;
 };
 
 type ApiPage = {
@@ -198,7 +206,7 @@ export const getRecentPages = async (): Promise<Log[]> => {
   return response.items.map(toPage);
 };
 
-type ApiMindMapNode = {
+export type ApiMindMapNode = {
   id: string;
   label: string;
   parentNodeId: string | null;
@@ -207,7 +215,7 @@ type ApiMindMapNode = {
   children?: ApiMindMapNode[];
 };
 
-const toMindMapNode = (node: ApiMindMapNode): MindMapNode => ({
+export const toMindMapNode = (node: ApiMindMapNode): MindMapNode => ({
   id: node.id,
   label: node.label,
   parentId: node.parentNodeId,
@@ -236,13 +244,7 @@ export const getMindMaps = async (): Promise<MindMap[]> => {
   return (response.items ?? []).map((mindMap) => ({ ...mindMap, nodeCount: 0 }));
 };
 
-export const getMindMap = async (id: string): Promise<MindMapDetail> => {
-  const response = await apiRequest<{
-    id: string;
-    title: string;
-    rootNode: ApiMindMapNode;
-  }>(routes.mindmaps.byId(id));
-
+const toMindMapDetail = (response: ApiMindMapDetail): MindMapDetail => {
   const rootNode = toMindMapNode(response.rootNode);
   return {
     id: response.id,
@@ -252,26 +254,32 @@ export const getMindMap = async (id: string): Promise<MindMapDetail> => {
   };
 };
 
+export const getMindMap = async (id: string): Promise<MindMapDetail> => {
+  const response = await apiRequest<ApiMindMapDetail>(routes.mindmaps.byId(id));
+  return toMindMapDetail(response);
+};
+
 export const createMindMap = async (title: string): Promise<MindMapDetail> =>
-  apiRequest<MindMapDetail>(routes.mindmaps.root, {
+  toMindMapDetail(await apiRequest<ApiMindMapDetail>(routes.mindmaps.root, {
     method: "POST",
     body: JSON.stringify({ title }),
-  });
+  }));
 
-export const updateMindMap = async (id: string, data: Partial<MindMapDetail>): Promise<MindMapDetail> =>
-  apiRequest<MindMapDetail>(routes.mindmaps.byId(id), {
+export const updateMindMap = async (id: string, data: Pick<MindMapDetail, "title">): Promise<void> => {
+  await apiRequest<unknown>(routes.mindmaps.byId(id), {
     method: "PUT",
-    body: JSON.stringify(data),
+    body: JSON.stringify({ title: data.title }),
   });
+};
 
 export const createMindMapNode = async (
   mindMapId: string,
   data: { label: string; parentId: string | null },
 ): Promise<MindMapNode> =>
-  apiRequest<MindMapNode>(`/api/mindmaps/${mindMapId}/nodes`, {
+  toMindMapNode(await apiRequest<ApiMindMapNode>(`/api/mindmaps/${mindMapId}/nodes`, {
     method: "POST",
-    body: JSON.stringify({ parentNodeId: data.parentId, label: data.label }),
-  });
+    body: JSON.stringify({ parentNodeId: data.parentId, label: data.label, notes: null, sortOrder: 0 }),
+  }));
 
 export const updateMindMapNode = async (
   mindMapId: string,
@@ -285,10 +293,10 @@ export const updateMindMapNode = async (
     sortOrder?: number;
   },
 ): Promise<MindMapNode> =>
-  apiRequest<MindMapNode>(`/api/mindmaps/${mindMapId}/nodes/${nodeId}`, {
+  toMindMapNode(await apiRequest<ApiMindMapNode>(`/api/mindmaps/${mindMapId}/nodes/${nodeId}`, {
     method: "PUT",
     body: JSON.stringify(data),
-  });
+  }));
 
 export const deleteMindMapNode = async (mindMapId: string, nodeId: string): Promise<void> => {
   await apiRequest<unknown>(`/api/mindmaps/${mindMapId}/nodes/${nodeId}`, {
@@ -350,10 +358,10 @@ export const login = async (email: string, password: string): Promise<{ token: s
 
 export const getProfile = async (): Promise<ProfileResponse> => apiRequest<ProfileResponse>(routes.auth.me);
 
-export const updateProfileName = async (id: string, _name: string): Promise<ProfileResponse> =>
+export const updateProfileName = async (id: string, firstName: string, lastName: string): Promise<ProfileResponse> =>
   apiRequest<unknown>(`/api/users/${id}`, {
     method: "PUT",
-    body: JSON.stringify({}),
+    body: JSON.stringify({ firstName, lastName }),
   }).then(() => getProfile());
 
 export const updateProfileEmail = async (id: string, email: string): Promise<void> => {
@@ -531,6 +539,8 @@ export const attachListToPage = async (listId: string, pageId: string): Promise<
 
 export type AdminUser = {
   id: string;
+  firstName: string;
+  lastName: string;
   name: string;
   email: string;
   role: "admin" | "member";
@@ -539,14 +549,16 @@ export type AdminUser = {
 };
 
 export type AdminUserInput = {
-  name: string;
+  firstName: string;
+  lastName: string;
   email: string;
   password: string;
   role: "admin" | "member";
 };
 
 export type AdminUserUpdateInput = {
-  name: string;
+  firstName: string;
+  lastName: string;
   email: string;
   role: "admin" | "member";
   enabled: boolean;
@@ -554,6 +566,9 @@ export type AdminUserUpdateInput = {
 
 type ApiUser = {
   id: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
   email: string;
   role: "admin" | "member";
   isDisabled: boolean;
@@ -562,7 +577,9 @@ type ApiUser = {
 
 const toAdminUser = (user: ApiUser): AdminUser => ({
   id: user.id,
-  name: user.email,
+  firstName: user.firstName,
+  lastName: user.lastName,
+  name: user.fullName,
   email: user.email,
   role: user.role,
   enabled: !user.isDisabled,
@@ -577,13 +594,13 @@ export const getAdminUser = async (id: string): Promise<AdminUser> =>
 export const createAdminUser = async (payload: AdminUserInput): Promise<AdminUser> =>
   toAdminUser(await apiRequest<ApiUser>("/api/users", {
     method: "POST",
-    body: JSON.stringify({ email: payload.email, password: payload.password, role: payload.role }),
+    body: JSON.stringify({ email: payload.email, password: payload.password, firstName: payload.firstName, lastName: payload.lastName, role: payload.role }),
   }));
 
 export const updateAdminUser = async (id: string, payload: AdminUserUpdateInput): Promise<AdminUser> =>
   toAdminUser(await apiRequest<ApiUser>(`/api/users/${id}`, {
     method: "PUT",
-    body: JSON.stringify({ email: payload.email, role: payload.role, isDisabled: !payload.enabled }),
+    body: JSON.stringify({ email: payload.email, firstName: payload.firstName, lastName: payload.lastName, role: payload.role, isDisabled: !payload.enabled }),
   }));
 
 export const deleteAdminUser = async (id: string): Promise<void> => {

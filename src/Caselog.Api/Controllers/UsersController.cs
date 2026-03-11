@@ -21,7 +21,7 @@ public sealed class UsersController(CaselogDbContext dbContext, SmtpEmailService
         }
 
         var users = await dbContext.Users.AsNoTracking().OrderBy(x => x.Email)
-            .Select(x => new UserResponse(x.Id, x.Email, x.Role, x.CreatedAt, x.LastLoginAt, x.IsDisabled))
+            .Select(x => new UserResponse(x.Id, x.FirstName, x.LastName, ($"{x.FirstName} {x.LastName}").Trim(), x.Email, x.Role, x.CreatedAt, x.LastLoginAt, x.IsDisabled))
             .ToListAsync(cancellationToken);
 
         return Ok(new ApiEnvelope<IReadOnlyList<UserResponse>>(users));
@@ -46,6 +46,8 @@ public sealed class UsersController(CaselogDbContext dbContext, SmtpEmailService
             Id = Guid.NewGuid(),
             Email = email,
             PasswordHash = PasswordHasher.Hash(request.Password),
+            FirstName = request.FirstName.Trim(),
+            LastName = request.LastName.Trim(),
             Role = request.Role,
             CreatedAt = DateTime.UtcNow,
             IsDisabled = false
@@ -55,7 +57,7 @@ public sealed class UsersController(CaselogDbContext dbContext, SmtpEmailService
         await dbContext.SaveChangesAsync(cancellationToken);
         await emailService.SendWelcomeEmailAsync(user.Email, cancellationToken);
 
-        var response = new UserResponse(user.Id, user.Email, user.Role, user.CreatedAt, user.LastLoginAt, user.IsDisabled);
+        var response = new UserResponse(user.Id, user.FirstName, user.LastName, ($"{user.FirstName} {user.LastName}").Trim(), user.Email, user.Role, user.CreatedAt, user.LastLoginAt, user.IsDisabled);
         return CreatedAtAction(nameof(GetUser), new { id = user.Id }, new ApiEnvelope<UserResponse>(response));
     }
 
@@ -75,7 +77,7 @@ public sealed class UsersController(CaselogDbContext dbContext, SmtpEmailService
             return NotFoundProblem($"User '{id}' was not found.");
         }
 
-        return Ok(new ApiEnvelope<UserResponse>(new UserResponse(user.Id, user.Email, user.Role, user.CreatedAt, user.LastLoginAt, user.IsDisabled)));
+        return Ok(new ApiEnvelope<UserResponse>(new UserResponse(user.Id, user.FirstName, user.LastName, ($"{user.FirstName} {user.LastName}").Trim(), user.Email, user.Role, user.CreatedAt, user.LastLoginAt, user.IsDisabled)));
     }
 
     [HttpPut("{id:guid}")]
@@ -104,6 +106,16 @@ public sealed class UsersController(CaselogDbContext dbContext, SmtpEmailService
             user.PasswordHash = PasswordHasher.Hash(request.Password);
         }
 
+        if (!string.IsNullOrWhiteSpace(request.FirstName))
+        {
+            user.FirstName = request.FirstName.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.LastName))
+        {
+            user.LastName = request.LastName.Trim();
+        }
+
         if (isAdmin)
         {
             if (request.Role.HasValue)
@@ -118,7 +130,7 @@ public sealed class UsersController(CaselogDbContext dbContext, SmtpEmailService
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
-        return Ok(new ApiEnvelope<UserResponse>(new UserResponse(user.Id, user.Email, user.Role, user.CreatedAt, user.LastLoginAt, user.IsDisabled)));
+        return Ok(new ApiEnvelope<UserResponse>(new UserResponse(user.Id, user.FirstName, user.LastName, ($"{user.FirstName} {user.LastName}").Trim(), user.Email, user.Role, user.CreatedAt, user.LastLoginAt, user.IsDisabled)));
     }
 
     [HttpDelete("{id:guid}")]
