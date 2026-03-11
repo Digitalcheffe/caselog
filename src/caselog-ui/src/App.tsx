@@ -2500,7 +2500,18 @@ const AdminUsers = ({
             </Button>
             <Button
               variant="danger"
-              onClick={() => setConfirmDelete({ id: selectedId, firstName: editForm.firstName.trim(), lastName: editForm.lastName.trim(), name: editUserName, email: editForm.email, role: editForm.role, enabled: editForm.enabled, lastLoginAt: null })}
+              onClick={() =>
+                setConfirmDelete({
+                  id: selectedId,
+                  firstName: editForm.firstName.trim(),
+                  lastName: editForm.lastName.trim(),
+                  name: editUserName,
+                  email: editForm.email,
+                  role: editForm.role,
+                  enabled: editForm.enabled,
+                  lastLoginAt: null,
+                })
+              }
             >
               Delete
             </Button>
