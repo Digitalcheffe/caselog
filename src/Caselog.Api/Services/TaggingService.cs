@@ -25,7 +25,6 @@ public sealed class TaggingService(CaselogDbContext dbContext)
         return entityType switch
         {
             "log" => await dbContext.Logs.AsNoTracking().AnyAsync(x => x.Id == entityId && x.UserId == userId, cancellationToken),
-            "" => await dbContext..AsNoTracking().AnyAsync(x => x.Id == entityId && x.UserId == userId, cancellationToken),
             "kase" => await dbContext.Kases.AsNoTracking().AnyAsync(x => x.Id == entityId && x.UserId == userId, cancellationToken),
             "list" => await dbContext.ListTypes.AsNoTracking().AnyAsync(x => x.Id == entityId && x.UserId == userId, cancellationToken),
             "listentry" => await dbContext.ListEntries.AsNoTracking().AnyAsync(x => x.Id == entityId && x.UserId == userId, cancellationToken),
