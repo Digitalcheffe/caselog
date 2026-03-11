@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Serilog;
 using Serilog.Events;
 using SerilogLog = Serilog.Log;
@@ -302,7 +303,7 @@ static async Task<List<string>> GetMissingRequiredTablesAsync(CaselogDbContext d
     return requiredTableNames.Where(name => !existingTables.Contains(name)).ToList();
 }
 
-static async Task<(bool Exists, string? Type)> GetSearchIndexMetadataAsync(CaselogDbContext dbContext)
+static async Task<SearchIndexMetadata> GetSearchIndexMetadataAsync(CaselogDbContext dbContext)
 {
     await using var connection = dbContext.Database.GetDbConnection();
     if (connection.State != System.Data.ConnectionState.Open)
@@ -311,31 +312,67 @@ static async Task<(bool Exists, string? Type)> GetSearchIndexMetadataAsync(Casel
     }
 
     await using var command = connection.CreateCommand();
-    command.CommandText = "SELECT type FROM sqlite_master WHERE name = 'search_index' LIMIT 1;";
+    command.CommandText = "SELECT type, sql FROM sqlite_master WHERE name = 'search_index' LIMIT 1;";
 
-    var value = await command.ExecuteScalarAsync();
-    return value is null or DBNull ? (false, null) : (true, value.ToString());
+    await using var reader = await command.ExecuteReaderAsync();
+    if (!await reader.ReadAsync())
+    {
+        return new SearchIndexMetadata(false, null, null, false, false);
+    }
+
+    var type = reader.IsDBNull(0) ? null : reader.GetString(0);
+    var sql = reader.IsDBNull(1) ? null : reader.GetString(1);
+    return BuildSearchIndexMetadata(type, sql);
 }
 
-static void ValidateSearchIndex((bool Exists, string? Type) searchIndexMetadata)
+static SearchIndexMetadata BuildSearchIndexMetadata(string? type, string? sql)
+{
+    var normalizedSql = sql ?? string.Empty;
+    var isVirtualTableSql = Regex.IsMatch(normalizedSql, @"\bCREATE\s+VIRTUAL\s+TABLE\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    var usesFts5 = Regex.IsMatch(normalizedSql, @"\bUSING\s+fts5\s*\(", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    return new SearchIndexMetadata(true, type, sql, isVirtualTableSql, usesFts5);
+}
+
+static bool IsValidSearchIndex(SearchIndexMetadata searchIndexMetadata)
+{
+    return searchIndexMetadata.Exists
+        && searchIndexMetadata.IsVirtualTableSql
+        && searchIndexMetadata.UsesFts5;
+}
+
+static void ValidateSearchIndex(SearchIndexMetadata searchIndexMetadata)
 {
     if (!searchIndexMetadata.Exists)
     {
         throw new InvalidOperationException("Required search index table 'search_index' is missing after migrations and startup repair.");
     }
 
-    if (!string.Equals(searchIndexMetadata.Type, "virtual", StringComparison.OrdinalIgnoreCase))
+    if (!IsValidSearchIndex(searchIndexMetadata))
     {
-        throw new InvalidOperationException($"Search index table exists but is not an FTS virtual table after startup repair. Type={searchIndexMetadata.Type ?? "unknown"}.");
+        throw new InvalidOperationException(
+            "Search index object exists but is not a valid FTS5 virtual table after startup repair. " +
+            $"Type={searchIndexMetadata.Type ?? "unknown"}; " +
+            $"SqlIndicatesVirtualTable={searchIndexMetadata.IsVirtualTableSql}; " +
+            $"SqlIndicatesFts5={searchIndexMetadata.UsesFts5}; " +
+            $"Sql={searchIndexMetadata.SqlDefinition ?? "<null>"}.");
     }
 }
 
-static async Task<(bool Exists, string? Type)> EnsureSearchIndexTableAsync(CaselogDbContext dbContext, MsLogger logger)
+static async Task<SearchIndexMetadata> EnsureSearchIndexTableAsync(CaselogDbContext dbContext, MsLogger logger)
 {
     var metadata = await GetSearchIndexMetadataAsync(dbContext);
-    if (string.Equals(metadata.Type, "virtual", StringComparison.OrdinalIgnoreCase))
+    logger.LogInformation(
+        "Search index check: Exists={Exists}; Type={Type}; SqlIndicatesVirtualTable={SqlIndicatesVirtualTable}; SqlIndicatesFts5={SqlIndicatesFts5}; Valid={Valid}",
+        metadata.Exists,
+        metadata.Type,
+        metadata.IsVirtualTableSql,
+        metadata.UsesFts5,
+        IsValidSearchIndex(metadata));
+
+    if (IsValidSearchIndex(metadata))
     {
-        logger.LogInformation("Search index check: search_index is healthy (type=virtual).");
+        logger.LogInformation("Search index check: search_index is healthy FTS5 virtual table.");
         return metadata;
     }
 
@@ -344,7 +381,13 @@ static async Task<(bool Exists, string? Type)> EnsureSearchIndexTableAsync(Casel
         logger.LogWarning("Search index check: search_index is missing. Creating FTS5 virtual table.");
         await CreateSearchIndexVirtualTableAsync(dbContext);
         var repairedMetadata = await GetSearchIndexMetadataAsync(dbContext);
-        logger.LogInformation("Search index repair result: Exists={Exists}; Type={Type}", repairedMetadata.Exists, repairedMetadata.Type);
+        logger.LogInformation(
+            "Search index repair result: Exists={Exists}; Type={Type}; SqlIndicatesVirtualTable={SqlIndicatesVirtualTable}; SqlIndicatesFts5={SqlIndicatesFts5}; Valid={Valid}",
+            repairedMetadata.Exists,
+            repairedMetadata.Type,
+            repairedMetadata.IsVirtualTableSql,
+            repairedMetadata.UsesFts5,
+            IsValidSearchIndex(repairedMetadata));
         return repairedMetadata;
     }
 
@@ -353,11 +396,23 @@ static async Task<(bool Exists, string? Type)> EnsureSearchIndexTableAsync(Casel
         logger.LogWarning("Search index check: search_index exists as a regular table. Starting in-place repair to FTS5 virtual table.");
         await RepairLegacySearchIndexTableAsync(dbContext, logger);
         var repairedMetadata = await GetSearchIndexMetadataAsync(dbContext);
-        logger.LogInformation("Search index repair result: Exists={Exists}; Type={Type}", repairedMetadata.Exists, repairedMetadata.Type);
+        logger.LogInformation(
+            "Search index repair result: Exists={Exists}; Type={Type}; SqlIndicatesVirtualTable={SqlIndicatesVirtualTable}; SqlIndicatesFts5={SqlIndicatesFts5}; Valid={Valid}",
+            repairedMetadata.Exists,
+            repairedMetadata.Type,
+            repairedMetadata.IsVirtualTableSql,
+            repairedMetadata.UsesFts5,
+            IsValidSearchIndex(repairedMetadata));
         return repairedMetadata;
     }
 
-    logger.LogError("Search index check: unsupported object type for search_index. Type={Type}", metadata.Type);
+    logger.LogError(
+        "Search index check: search_index metadata is invalid or unsupported. Exists={Exists}; Type={Type}; SqlIndicatesVirtualTable={SqlIndicatesVirtualTable}; SqlIndicatesFts5={SqlIndicatesFts5}; Sql={Sql}",
+        metadata.Exists,
+        metadata.Type,
+        metadata.IsVirtualTableSql,
+        metadata.UsesFts5,
+        metadata.SqlDefinition);
     return metadata;
 }
 
@@ -583,3 +638,10 @@ internal record StartupChecks(
     int PendingMigrationCount,
     bool SearchIndexReady,
     string? SearchIndexType);
+
+internal record SearchIndexMetadata(
+    bool Exists,
+    string? Type,
+    string? SqlDefinition,
+    bool IsVirtualTableSql,
+    bool UsesFts5);
