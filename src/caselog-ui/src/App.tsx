@@ -647,12 +647,11 @@ const ListsIndexPage = ({
       ) : (
         <div className="index-grid">
           {lists.map((list) => (
-            <Card key={list.id}>
+            <Card key={list.id} className="interactive-card" onClick={() => navigate(`/lists/${list.id}`)}>
               <h3>{list.name}</h3>
               <MetadataLine className={!list.description ? "fallback-description" : undefined}>{list.description || "No description"}</MetadataLine>
               <p className="muted">Fields: {counts[list.id]?.fields ?? 0}</p>
               <p className="muted">Entries: {counts[list.id]?.entries ?? 0}</p>
-              <Button onClick={() => navigate(`/lists/${list.id}`)}>Open</Button>
             </Card>
           ))}
         </div>
@@ -1064,10 +1063,9 @@ const KasesPage = ({
       />
       <CardGrid>
         {kases.map((kase) => (
-          <Card key={kase.id}>
+          <Card key={kase.id} className="interactive-card" onClick={() => navigate(`/kases/${kase.id}`)}>
             <h3>{kase.name}</h3>
             <p>{kase.description || "No description"}</p>
-            <Button onClick={() => navigate(`/kases/${kase.id}`)}>Open</Button>
           </Card>
         ))}
       </CardGrid>
@@ -1123,7 +1121,7 @@ const KaseDetailPage = ({
           {logs.map((page) => {
             const overflow = Math.max(page.tags.length - 3, 0);
             return (
-              <Card key={page.id}>
+              <Card key={page.id} className="interactive-card" onClick={() => navigate(`/logs/${page.id}`)}>
                 <button
                   type="button"
                   className="card-link-title"
@@ -1203,11 +1201,15 @@ const PageEditor = ({
   const persistDraft = async (nextDraft: Log) => {
     setSaveState("saving");
     try {
-      await updatePage(nextDraft.id, { content: nextDraft.content });
-      savePageAndStore(nextDraft);
+      const saved = await updatePage(nextDraft.id, { content: nextDraft.content });
+      const mergedDraft = { ...nextDraft, ...saved };
+      setDraft(mergedDraft);
+      savePageAndStore(mergedDraft);
       setSaveState("saved");
-    } catch {
+    } catch (error) {
+      const apiError = error as ApiError;
       setSaveState("error");
+      onToast(apiError.message || "Save failed");
     }
   };
 
@@ -1227,10 +1229,14 @@ const PageEditor = ({
     };
     setDraft(nextDraft);
     try {
-      await updatePage(nextDraft.id, changes);
-      savePageAndStore(nextDraft);
+      const saved = await updatePage(nextDraft.id, changes);
+      const mergedDraft = { ...nextDraft, ...saved };
+      setDraft(mergedDraft);
+      savePageAndStore(mergedDraft);
       return true;
-    } catch {
+    } catch (error) {
+      const apiError = error as ApiError;
+      onToast(apiError.message || "Save failed");
       return false;
     }
   };
@@ -1356,31 +1362,56 @@ const PageEditor = ({
     const html: string[] = [];
     let inUl = false;
     let inOl = false;
+    let tableRows: string[] = [];
+
+    const flushTable = () => {
+      if (tableRows.length === 0) return;
+      html.push(`<table><tbody>${tableRows.join("")}</tbody></table>`);
+      tableRows = [];
+    };
+
+    const flushLists = () => {
+      if (inUl) {
+        html.push("</ul>");
+        inUl = false;
+      }
+      if (inOl) {
+        html.push("</ol>");
+        inOl = false;
+      }
+    };
 
     for (const rawLine of lines) {
       const line = rawLine.trim();
       if (!line) {
-        if (inUl) {
-          html.push("</ul>");
-          inUl = false;
-        }
-        if (inOl) {
-          html.push("</ol>");
-          inOl = false;
-        }
+        flushLists();
+        flushTable();
         continue;
       }
 
+      const isTableSeparator = /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(line);
+      if (isTableSeparator) {
+        continue;
+      }
+
+      const isTableRow = /\|/.test(line) && /^\|?.+\|.+\|?$/.test(line);
+      if (isTableRow) {
+        flushLists();
+        const columns = line
+          .replace(/^\|/, "")
+          .replace(/\|$/, "")
+          .split("|")
+          .map((column) => `<td>${parseInlineMarkdown(column.trim())}</td>`)
+          .join("");
+        tableRows.push(`<tr>${columns}</tr>`);
+        continue;
+      }
+
+      flushTable();
+
       const heading = line.match(/^(#{1,3})\s+(.+)/);
       if (heading) {
-        if (inUl) {
-          html.push("</ul>");
-          inUl = false;
-        }
-        if (inOl) {
-          html.push("</ol>");
-          inOl = false;
-        }
+        flushLists();
         const level = heading[1].length;
         html.push(`<h${level}>${parseInlineMarkdown(heading[2])}</h${level}>`);
         continue;
@@ -1415,14 +1446,7 @@ const PageEditor = ({
       }
 
       if (line.startsWith("> ")) {
-        if (inUl) {
-          html.push("</ul>");
-          inUl = false;
-        }
-        if (inOl) {
-          html.push("</ol>");
-          inOl = false;
-        }
+        flushLists();
         html.push(`<blockquote>${parseInlineMarkdown(line.slice(2))}</blockquote>`);
         continue;
       }
@@ -1430,14 +1454,14 @@ const PageEditor = ({
       html.push(`<p>${parseInlineMarkdown(line)}</p>`);
     }
 
-    if (inUl) html.push("</ul>");
-    if (inOl) html.push("</ol>");
+    flushLists();
+    flushTable();
     return html.join("");
   };
 
   const handlePasteMarkdown = (event: ClipboardEvent<HTMLDivElement>) => {
     const text = event.clipboardData.getData("text/plain");
-    if (!text || !/^(#{1,6}|[-*]\s|\d+\.\s|>\s|\*\*|`)/m.test(text)) {
+    if (!text || !/^(#{1,6}|[-*]\s|\d+\.\s|>\s|\*\*|`|\|)/m.test(text)) {
       return;
     }
 

@@ -137,6 +137,7 @@ type ApiPage = {
   tags?: string[];
   visibility?: ApiVisibility;
   followUp?: boolean;
+  isFollowUp?: boolean;
   hasFollowUp?: boolean;
   attachments?: Attachment[];
   createdAt?: string;
@@ -152,7 +153,7 @@ const toPage = (page: ApiPage): Log => {
     content: page.content ?? "",
     tags: page.tags ?? [],
     visibility: page.visibility ?? "private",
-    followUp: page.followUp ?? page.hasFollowUp ?? false,
+    followUp: page.followUp ?? page.hasFollowUp ?? page.isFollowUp ?? false,
     attachments: page.attachments ?? [],
     createdAt: page.createdAt ?? now,
     updatedAt: page.updatedAt ?? now,
@@ -170,7 +171,9 @@ export const updatePage = async (
   toPage(
     await apiRequest<ApiPage>(routes.logs.byId(id), {
       method: "PUT",
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        ...(await buildUpdateLogBody(id, body)),
+      }),
     }),
   );
 
@@ -348,7 +351,23 @@ export const createLooseEndLog = async (): Promise<Log> =>
   toPage(await apiRequest<ApiPage>(routes.logs.root, { method: "POST", body: JSON.stringify({ title: "Untitled" }) }));
 
 export const updateLog = async (id: string, body: Partial<Pick<Log, "title" | "content" | "visibility" | "followUp" | "tags"> & { kaseId?: string | null }>): Promise<Log> =>
-  toPage(await apiRequest<ApiPage>(routes.logs.byId(id), { method: "PUT", body: JSON.stringify(body) }));
+  toPage(await apiRequest<ApiPage>(routes.logs.byId(id), { method: "PUT", body: JSON.stringify(await buildUpdateLogBody(id, body)) }));
+
+const buildUpdateLogBody = async (
+  id: string,
+  body: Partial<Pick<Log, "title" | "content" | "visibility" | "followUp"> & { kaseId?: string | null }>,
+) => {
+  const current = await getPage(id);
+  return {
+    kaseId: body.kaseId === undefined ? current.kaseId ?? null : body.kaseId,
+    title: body.title ?? current.title,
+    content: body.content ?? current.content,
+    visibility: body.visibility ?? current.visibility,
+    publicSlug: null,
+    isFollowUp: body.followUp ?? current.followUp,
+    followUpDueAt: null,
+  };
+};
 
 export const login = async (email: string, password: string): Promise<{ token: string; user?: unknown }> =>
   apiRequest<{ token: string; user?: unknown }>(routes.auth.login, {
