@@ -190,7 +190,6 @@ public sealed class NotesController(CaselogDbContext dbContext, NoteSearchIndexS
             "mindmap" => await dbContext.MindMaps.AsNoTracking().AnyAsync(x => x.Id == entityId.Value && x.UserId == userId, cancellationToken),
             "note" => await dbContext.Notes.AsNoTracking().AnyAsync(x => x.Id == entityId.Value && x.UserId == userId, cancellationToken),
             "kase" => await dbContext.Kases.AsNoTracking().AnyAsync(x => x.Id == entityId.Value && x.UserId == userId, cancellationToken),
-            "" => await dbContext..AsNoTracking().AnyAsync(x => x.Id == entityId.Value && x.UserId == userId, cancellationToken),
             _ => false
         };
 
