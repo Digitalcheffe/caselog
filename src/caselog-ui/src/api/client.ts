@@ -85,7 +85,7 @@ const unwrapEnvelope = async <T>(response: Response, method: string, url: string
       message:
         typeof payload?.error === 'string'
           ? payload.error
-          : (payload?.error as { message?: string } | null)?.message ?? fallbackMessage || response.statusText,
+          : (payload?.error as { message?: string } | null)?.message ?? (fallbackMessage || response.statusText),
       details: payload ?? problemDetails,
     } satisfies ApiError;
   }

@@ -2,11 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
-  MarkerType,
-  MiniMap,
-  Panel,
-  addEdge,
-  type Connection,
   type Edge,
   type Node,
   type NodeChange,
@@ -161,7 +156,6 @@ export const MindMapEditorPage = ({ id, onToast }: { id: string; onToast: (value
             source: n.parentNodeId as string,
             target: n.id,
             animated: false,
-            markerEnd: { type: MarkerType.ArrowClosed },
             style: { stroke: "var(--color-accent)", strokeWidth: 2 },
           })),
       );
@@ -226,30 +220,6 @@ export const MindMapEditorPage = ({ id, onToast }: { id: string; onToast: (value
     }
   };
 
-  const connectNodes = async (connection: Connection) => {
-    if (!connection.source || !connection.target || connection.source === connection.target) {
-      return;
-    }
-
-    setFlowEdges((current) => addEdge({ ...connection, markerEnd: { type: MarkerType.ArrowClosed }, style: { stroke: "var(--color-accent)", strokeWidth: 2 } }, current));
-
-    const target = nodeMap[connection.target];
-    if (!target) return;
-    try {
-      await updateMindMapNode(id, target.id, {
-        label: target.label,
-        parentNodeId: connection.source,
-        notes: target.notes ?? null,
-        sortOrder: target.sortOrder ?? 0,
-      });
-      await load();
-    } catch (error) {
-      const apiError = error as ApiError;
-      onToast(apiError.message || "Unable to connect nodes");
-      await load();
-    }
-  };
-
   if (loading) return <Card><Spinner /></Card>;
   if (!detail) return <EmptyState title="Mind map missing" body="Not found." />;
 
@@ -267,19 +237,17 @@ export const MindMapEditorPage = ({ id, onToast }: { id: string; onToast: (value
             nodes={flowNodes}
             edges={flowEdges}
             fitView
-            onConnect={(connection) => void connectNodes(connection)}
             onNodesChange={onNodesChange}
-            onNodeDragStop={(_, node) => void persistNodePosition(node.id, node.position.x, node.position.y)}
-            onNodeClick={(_, node) => {
+            onNodeDragStop={(_event: unknown, node: Node) => void persistNodePosition(node.id, node.position.x, node.position.y)}
+            onNodeClick={(_event: unknown, node: Node) => {
               setSelectedId(node.id);
               setEditingLabel(String(nodeMap[node.id]?.label ?? ""));
             }}
           >
-            <MiniMap pannable zoomable />
             <Controls />
             <Background />
-            <Panel position="top-left" className="mindmap-hint">Drag nodes to reposition. Connect nodes by dragging from one node to another.</Panel>
           </ReactFlow>
+          <p className="mindmap-hint">Drag nodes to reposition.</p>
         </div>
       </Card>
       <Card>
