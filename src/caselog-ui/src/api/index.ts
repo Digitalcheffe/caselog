@@ -577,7 +577,7 @@ type ApiUser = {
 
 const toAdminUser = (user: ApiUser): AdminUser => {
   const fullNameParts = user.fullName.trim().split(/\s+/).filter(Boolean);
-  const fallbackFirstName = fullNameParts.at(0) ?? "";
+  const fallbackFirstName = fullNameParts[0] ?? "";
   const fallbackLastName = fullNameParts.slice(1).join(" ");
   const firstName = user.firstName?.trim() || fallbackFirstName;
   const lastName = user.lastName?.trim() || fallbackLastName;
