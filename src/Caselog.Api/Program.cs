@@ -43,7 +43,7 @@ SerilogLogger configuredLogger = new LoggerConfiguration()
         restrictedToMinimumLevel: LogEventLevel.Debug)
     .CreateLogger();
 
-Log.Logger = configuredLogger;
+SerilogLog.Logger = configuredLogger;
 
 builder.Host.UseSerilog();
 
