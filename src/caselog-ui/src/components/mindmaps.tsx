@@ -4,7 +4,6 @@ import ReactFlow, {
   Controls,
   type Edge,
   type Node,
-  type NodeProps,
 } from "@xyflow/react";
 import {
   attachMindMapToPage,
@@ -24,14 +23,6 @@ import {
 import type { ApiError } from "../api/client";
 import { Button, Card, EmptyState, Input, MetadataLine, PageHeader, Spinner } from "./ui";
 
-const mapNode = ({ data, selected }: NodeProps<Node<{ label: string }>>) => (
-  <div className={`mindmap-node ${selected ? "selected" : ""}`}>
-    <span>{data.label}</span>
-  </div>
-);
-
-const nodeTypes = { mapNode };
-
 const flatten = (root: MindMapNode): MindMapNode[] => {
   const queue = [root];
   const nodes: MindMapNode[] = [];
@@ -44,7 +35,7 @@ const flatten = (root: MindMapNode): MindMapNode[] => {
   return nodes;
 };
 
-const toFlow = (nodes: MindMapNode[]): Node[] => {
+const toFlow = (nodes: MindMapNode[], selectedId: string | null): Node[] => {
   const byParent = new Map<string | null, MindMapNode[]>();
   nodes.forEach((n) => byParent.set(n.parentNodeId, [...(byParent.get(n.parentNodeId) ?? []), n]));
   const root = nodes.find((n) => n.parentNodeId === null);
@@ -63,7 +54,26 @@ const toFlow = (nodes: MindMapNode[]): Node[] => {
     });
   }
 
-  return nodes.map((n) => ({ id: n.id, type: "mapNode", position: positions.get(n.id) ?? { x: 0, y: 0 }, data: { label: n.label } }));
+  return nodes.map((n) => {
+    const isSelected = n.id === selectedId;
+
+    return {
+      id: n.id,
+      position: positions.get(n.id) ?? { x: 0, y: 0 },
+      data: {
+        label: (
+          <div className={`mindmap-node ${isSelected ? "selected" : ""}`}>
+            <span>{n.label}</span>
+          </div>
+        ),
+      },
+      style: {
+        border: "none",
+        background: "transparent",
+        padding: 0,
+      },
+    };
+  });
 };
 
 export const MindMapsIndexPage = ({ navigate, onToast }: { navigate: (path: string) => void; onToast: (value: string) => void }) => {
@@ -131,7 +141,7 @@ export const MindMapEditorPage = ({ id, onToast }: { id: string; onToast: (value
   useEffect(() => { void load(); }, [load]);
 
   const nodeMap = useMemo(() => Object.fromEntries((detail?.nodes ?? []).map((n) => [n.id, n])), [detail]);
-  const flowNodes = useMemo(() => toFlow(detail?.nodes ?? []), [detail]);
+  const flowNodes = useMemo(() => toFlow(detail?.nodes ?? [], selectedId), [detail, selectedId]);
   const edges: Edge[] = useMemo(() => (detail?.nodes ?? []).filter((n) => n.parentNodeId).map((n) => ({ id: `${n.parentNodeId}-${n.id}`, source: n.parentNodeId as string, target: n.id })), [detail]);
 
   const selectedNode = selectedId ? nodeMap[selectedId] : null;
@@ -171,9 +181,9 @@ export const MindMapEditorPage = ({ id, onToast }: { id: string; onToast: (value
     <div className="mindmap-editor-layout">
       <Card>
         <div className="mindmap-canvas">
-          <ReactFlow nodes={flowNodes} edges={edges} nodeTypes={nodeTypes} fitView onNodeClick={(_, n) => {
+          <ReactFlow nodes={flowNodes} edges={edges} fitView onNodeClick={(_, n) => {
             setSelectedId(n.id);
-            setEditingLabel(String(n.data.label ?? ""));
+            setEditingLabel(String(nodeMap[n.id]?.label ?? ""));
           }}>
             <Controls />
             <Background />
