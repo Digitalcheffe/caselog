@@ -114,7 +114,7 @@ builder.Services.AddScoped<MindMapSearchIndexService>();
 
 var app = builder.Build();
 
-var requiredTables = new[] { "Users", "UserApiKeys", "Kases", "Logs", "ListTypes", "ListFields", "ListEntries", "MindMaps", "MindMapNodes", "Notes", "Tags", "EntityTags", "search_index" };
+var requiredTables = new[] { "Users", "UserApiKeys", "Kases", "Logs", "ListTypes", "ListFields", "ListEntries", "MindMaps", "MindMapNodes", "Notes", "Tags", "EntityTags" };
 
 var startupChecks = new StartupChecks(
     dataPath,
@@ -122,7 +122,12 @@ var startupChecks = new StartupChecks(
     DbFileSize: null,
     DbConnectionOk: false,
     JwtConfigured: !string.IsNullOrWhiteSpace(builder.Configuration["CASELOG_JWT_SECRET"]),
-    SmtpConfigured: !string.IsNullOrWhiteSpace(builder.Configuration["CASELOG_SMTP_HOST"]) && !string.IsNullOrWhiteSpace(builder.Configuration["CASELOG_SMTP_FROM"]));
+    SmtpConfigured: !string.IsNullOrWhiteSpace(builder.Configuration["CASELOG_SMTP_HOST"]) && !string.IsNullOrWhiteSpace(builder.Configuration["CASELOG_SMTP_FROM"]),
+    MigrationCount: 0,
+    AppliedMigrationCount: 0,
+    PendingMigrationCount: 0,
+    SearchIndexReady: false,
+    SearchIndexType: null);
 
 await using (var scope = app.Services.CreateAsyncScope())
 {
@@ -152,9 +157,17 @@ await using (var scope = app.Services.CreateAsyncScope())
 
     await dbContext.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
 
+    var appliedMigrations = (await dbContext.Database.GetAppliedMigrationsAsync()).OrderBy(x => x).ToArray();
+    var searchIndexMetadata = await GetSearchIndexMetadataAsync(dbContext);
+
     startupChecks = startupChecks with
     {
-        DbConnectionOk = await dbContext.Database.CanConnectAsync()
+        DbConnectionOk = await dbContext.Database.CanConnectAsync(),
+        MigrationCount = allMigrations.Length,
+        AppliedMigrationCount = appliedMigrations.Length,
+        PendingMigrationCount = pendingMigrations.Length,
+        SearchIndexReady = searchIndexMetadata.Exists,
+        SearchIndexType = searchIndexMetadata.Type
     };
 
     var missingTables = await GetMissingRequiredTablesAsync(dbContext, requiredTables);
@@ -163,6 +176,16 @@ await using (var scope = app.Services.CreateAsyncScope())
         throw new InvalidOperationException(
             $"Database migration completed but required tables are missing: {string.Join(", ", missingTables)}. " +
             "This usually means runtime migrations were not discovered or do not match the runtime model.");
+    }
+
+    if (!searchIndexMetadata.Exists)
+    {
+        throw new InvalidOperationException("Required search index table 'search_index' is missing after migrations.");
+    }
+
+    if (!string.Equals(searchIndexMetadata.Type, "virtual", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException($"Search index table exists but is not an FTS virtual table. Type={searchIndexMetadata.Type ?? "unknown"}.");
     }
 
     if (!await dbContext.Users.AnyAsync())
@@ -287,6 +310,21 @@ static async Task<List<string>> GetMissingRequiredTablesAsync(CaselogDbContext d
     return requiredTableNames.Where(name => !existingTables.Contains(name)).ToList();
 }
 
+static async Task<(bool Exists, string? Type)> GetSearchIndexMetadataAsync(CaselogDbContext dbContext)
+{
+    await using var connection = dbContext.Database.GetDbConnection();
+    if (connection.State != System.Data.ConnectionState.Open)
+    {
+        await connection.OpenAsync();
+    }
+
+    await using var command = connection.CreateCommand();
+    command.CommandText = "SELECT type FROM sqlite_master WHERE name = 'search_index' LIMIT 1;";
+
+    var value = await command.ExecuteScalarAsync();
+    return value is null or DBNull ? (false, null) : (true, value.ToString());
+}
+
 static async Task<HashSet<string>> GetExistingTableNamesAsync(CaselogDbContext dbContext)
 {
     await using var connection = dbContext.Database.GetDbConnection();
@@ -358,6 +396,8 @@ static void LogStartupBanner(Microsoft.Extensions.Logging.ILogger logger, Startu
     var dbConnectStatus = checks.DbConnectionOk ? "✓ OK" : "✗ FAIL";
     var jwtStatus = checks.JwtConfigured ? "✓ configured" : "✗ not configured";
     var smtpStatus = checks.SmtpConfigured ? "✓ configured" : "✗ not configured";
+    var migrationStatus = $"{checks.AppliedMigrationCount}/{checks.MigrationCount} applied, {checks.PendingMigrationCount} pending";
+    var searchStatus = checks.SearchIndexReady ? $"✓ ready ({checks.SearchIndexType ?? "unknown"})" : "✗ missing";
 
     logger.LogInformation("═══════════════════════════════════════");
     logger.LogInformation("  {AppName} STARTUP — {Timestamp}", appName.ToUpperInvariant(), timestamp);
@@ -368,6 +408,8 @@ static void LogStartupBanner(Microsoft.Extensions.Logging.ILogger logger, Startu
     logger.LogInformation("  DB Connect : {DbConnectStatus}", dbConnectStatus);
     logger.LogInformation("  JWT Secret : {JwtStatus}", jwtStatus);
     logger.LogInformation("  SMTP       : {SmtpStatus}", smtpStatus);
+    logger.LogInformation("  Migrations : {MigrationStatus}", migrationStatus);
+    logger.LogInformation("  Search FTS : {SearchStatus}", searchStatus);
     logger.LogInformation("  Listening  : {ListeningUrl}", listeningUrl);
     logger.LogInformation("═══════════════════════════════════════");
 }
@@ -402,4 +444,9 @@ internal record StartupChecks(
     long? DbFileSize,
     bool DbConnectionOk,
     bool JwtConfigured,
-    bool SmtpConfigured);
+    bool SmtpConfigured,
+    int MigrationCount,
+    int AppliedMigrationCount,
+    int PendingMigrationCount,
+    bool SearchIndexReady,
+    string? SearchIndexType);

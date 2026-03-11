@@ -2,12 +2,42 @@ import { apiRequest } from "./client";
 
 export type Attachment = { id: string; fileName: string };
 
+type ApiVisibility = "private" | "internal" | "public";
+
+const routes = {
+  auth: {
+    login: "/api/auth/login",
+    me: "/api/auth/me",
+  },
+  kases: {
+    root: "/api/kases",
+    byId: (id: string) => `/api/kases/${id}`,
+    logs: (kaseId: string) => `/api/kases/${kaseId}/logs`,
+  },
+  logs: {
+    root: "/api/logs",
+    byId: (id: string) => `/api/logs/${id}`,
+  },
+  lists: {
+    root: "/api/lists",
+    byId: (id: string) => `/api/lists/${id}`,
+  },
+  mindmaps: {
+    root: "/api/mindmaps",
+    byId: (id: string) => `/api/mindmaps/${id}`,
+  },
+  apikeys: {
+    root: "/api/apikeys",
+    byId: (id: string) => `/api/apikeys/${id}`,
+  },
+};
+
 export type Log = {
   id: string;
   title: string;
   content: string;
   tags: string[];
-  visibility: "private" | "internal" | "public";
+  visibility: ApiVisibility;
   followUp: boolean;
   attachments: Attachment[];
   createdAt: string;
@@ -26,7 +56,7 @@ export type ListType = {
   id: string;
   name: string;
   description?: string | null;
-  visibility: "private" | "internal" | "public";
+  visibility: ApiVisibility;
   publicSlug?: string | null;
   createdAt: string;
 };
@@ -97,7 +127,7 @@ type ApiPage = {
   title: string;
   content?: string;
   tags?: string[];
-  visibility?: "private" | "internal" | "public";
+  visibility?: ApiVisibility;
   followUp?: boolean;
   hasFollowUp?: boolean;
   attachments?: Attachment[];
@@ -130,7 +160,7 @@ export const updatePage = async (
   >,
 ): Promise<Log> =>
   toPage(
-    await apiRequest<ApiPage>(`/api/logs/${id}`, {
+    await apiRequest<ApiPage>(routes.logs.byId(id), {
       method: "PUT",
       body: JSON.stringify(body),
     }),
@@ -147,11 +177,11 @@ export const uploadPageAttachment = async (id: string, file: File): Promise<void
 };
 
 export const deletePage = async (id: string): Promise<void> => {
-  await apiRequest<unknown>(`/api/logs/${id}`, { method: "DELETE" });
+  await apiRequest<unknown>(routes.logs.byId(id), { method: "DELETE" });
 };
 
 
-export const getPage = async (id: string): Promise<Log> => toPage(await apiRequest<ApiPage>(`/api/logs/${id}`));
+export const getPage = async (id: string): Promise<Log> => toPage(await apiRequest<ApiPage>(routes.logs.byId(id)));
 
 export const searchPages = async (query: string): Promise<Log[]> => {
   const response = await apiRequest<ApiPage[]>(`/api/search?q=${encodeURIComponent(query)}`);
@@ -202,7 +232,7 @@ const flattenMindMapNodes = (rootNode: MindMapNode): MindMapNode[] => {
 };
 
 export const getMindMaps = async (): Promise<MindMap[]> => {
-  const response = await apiRequest<PagedResult<Omit<MindMap, "nodeCount">>>("/api/mindmaps?page=1&pageSize=200");
+  const response = await apiRequest<PagedResult<Omit<MindMap, "nodeCount">>>(`${routes.mindmaps.root}?page=1&pageSize=200`);
   return (response.items ?? []).map((mindMap) => ({ ...mindMap, nodeCount: 0 }));
 };
 
@@ -211,7 +241,7 @@ export const getMindMap = async (id: string): Promise<MindMapDetail> => {
     id: string;
     title: string;
     rootNode: ApiMindMapNode;
-  }>(`/api/mindmaps/${id}`);
+  }>(routes.mindmaps.byId(id));
 
   const rootNode = toMindMapNode(response.rootNode);
   return {
@@ -223,13 +253,13 @@ export const getMindMap = async (id: string): Promise<MindMapDetail> => {
 };
 
 export const createMindMap = async (title: string): Promise<MindMapDetail> =>
-  apiRequest<MindMapDetail>("/api/mindmaps", {
+  apiRequest<MindMapDetail>(routes.mindmaps.root, {
     method: "POST",
     body: JSON.stringify({ title }),
   });
 
 export const updateMindMap = async (id: string, data: Partial<MindMapDetail>): Promise<MindMapDetail> =>
-  apiRequest<MindMapDetail>(`/api/mindmaps/${id}`, {
+  apiRequest<MindMapDetail>(routes.mindmaps.byId(id), {
     method: "PUT",
     body: JSON.stringify(data),
   });
@@ -256,7 +286,7 @@ export const updateMindMapNode = async (
   },
 ): Promise<MindMapNode> =>
   apiRequest<MindMapNode>(`/api/mindmaps/${mindMapId}/nodes/${nodeId}`, {
-    method: "PATCH",
+    method: "PUT",
     body: JSON.stringify(data),
   });
 
@@ -279,40 +309,46 @@ export const getPages = async (query = "page=1&pageSize=200"): Promise<Log[]> =>
 };
 
 export const getKases = async (): Promise<Kase[]> => {
-  const response = await apiRequest<{ items: Array<{ id: string; name: string; description?: string }> }>("/api/kases?page=1&pageSize=200");
+  const response = await apiRequest<{ items: Array<{ id: string; name: string; description?: string }> }>(`${routes.kases.root}?page=1&pageSize=200`);
   return response.items.map((k) => ({ id: k.id, name: k.name, description: k.description }));
 };
 
 export const createKase = async (body: { name: string; description?: string }): Promise<Kase> =>
-  apiRequest<Kase>("/api/kases", { method: "POST", body: JSON.stringify(body) });
+  apiRequest<Kase>(routes.kases.root, { method: "POST", body: JSON.stringify(body) });
 
 export const deleteKase = async (id: string): Promise<void> => {
-  await apiRequest<unknown>(`/api/kases/${id}`, { method: "DELETE" });
+  await apiRequest<unknown>(routes.kases.byId(id), { method: "DELETE" });
 };
 
 export const getKase = async (id: string): Promise<Kase> =>
-  apiRequest<Kase>(`/api/kases/${id}`);
+  apiRequest<Kase>(routes.kases.byId(id));
 
 export const getKaseLogs = async (kaseId: string): Promise<Log[]> => {
-  const response = await apiRequest<{ items: ApiPage[] }>(`/api/logs?kaseId=${encodeURIComponent(kaseId)}&page=1&pageSize=200`);
+  const response = await apiRequest<{ items: ApiPage[] }>(`${routes.kases.logs(kaseId)}?page=1&pageSize=200`);
   return response.items.map(toPage);
 };
 
 export const createKaseLog = async (kaseId: string, body: { title: string }): Promise<Log> =>
-  toPage(await apiRequest<ApiPage>(`/api/logs`, { method: "POST", body: JSON.stringify({ ...body, kaseId, content: "", visibility: "private" }) }));
+  toPage(await apiRequest<ApiPage>(routes.kases.logs(kaseId), { method: "POST", body: JSON.stringify({ title: body.title, content: "", visibility: "private" }) }));
 
 export const getLooseEnds = async (): Promise<Log[]> => {
-  const response = await apiRequest<{ items: ApiPage[] }>("/api/logs?unassigned=true&page=1&pageSize=200");
+  const response = await apiRequest<{ items: ApiPage[] }>(`${routes.logs.root}?unassigned=true&page=1&pageSize=200`);
   return response.items.map(toPage);
 };
 
 export const createLooseEndLog = async (): Promise<Log> =>
-  toPage(await apiRequest<ApiPage>("/api/logs", { method: "POST", body: JSON.stringify({ title: "Untitled" }) }));
+  toPage(await apiRequest<ApiPage>(routes.logs.root, { method: "POST", body: JSON.stringify({ title: "Untitled" }) }));
 
 export const updateLog = async (id: string, body: Partial<Pick<Log, "title" | "content" | "visibility" | "followUp" | "tags"> & { kaseId?: string | null }>): Promise<Log> =>
-  toPage(await apiRequest<ApiPage>(`/api/logs/${id}`, { method: "PUT", body: JSON.stringify(body) }));
+  toPage(await apiRequest<ApiPage>(routes.logs.byId(id), { method: "PUT", body: JSON.stringify(body) }));
 
-export const getProfile = async (): Promise<ProfileResponse> => apiRequest<ProfileResponse>("/api/auth/me");
+export const login = async (email: string, password: string): Promise<{ token: string; user?: unknown }> =>
+  apiRequest<{ token: string; user?: unknown }>(routes.auth.login, {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+
+export const getProfile = async (): Promise<ProfileResponse> => apiRequest<ProfileResponse>(routes.auth.me);
 
 export const updateProfileName = async (id: string, _name: string): Promise<ProfileResponse> =>
   apiRequest<unknown>(`/api/users/${id}`, {
@@ -353,7 +389,7 @@ export const disableTwoFactor = async (): Promise<void> => {
 };
 
 export const getApiKeys = async (): Promise<Array<{ id: string; name: string; createdAt: string; lastUsedAt?: string | null }>> => {
-  const keys = await apiRequest<Array<{ id: string; label: string; createdAt: string; lastUsedAt?: string | null }>>("/api/apikeys");
+  const keys = await apiRequest<Array<{ id: string; label: string; createdAt: string; lastUsedAt?: string | null }>>(routes.apikeys.root);
   return keys.map((key) => ({
     id: key.id,
     name: key.label,
@@ -363,9 +399,9 @@ export const getApiKeys = async (): Promise<Array<{ id: string; name: string; cr
 };
 
 export const createApiKey = async (name: string): Promise<{ id: string; name: string; key: string; createdAt: string }> => {
-  const created = await apiRequest<{ id: string; label: string; key: string; createdAt: string }>("/api/apikeys", {
+  const created = await apiRequest<{ id: string; label: string; key: string; createdAt: string }>(routes.apikeys.root, {
     method: "POST",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ label: name }),
   });
 
   return {
@@ -377,7 +413,7 @@ export const createApiKey = async (name: string): Promise<{ id: string; name: st
 };
 
 export const revokeApiKey = async (id: string): Promise<void> => {
-  await apiRequest<unknown>(`/api/apikeys/${id}`, {
+  await apiRequest<unknown>(routes.apikeys.byId(id), {
     method: "DELETE",
   });
 };
@@ -390,21 +426,21 @@ type ApiListType = {
   id: string;
   name: string;
   description?: string;
-  visibility: "private" | "internal" | "public";
+  visibility: ApiVisibility;
   publicSlug?: string;
   createdAt: string;
 };
 
 export const getLists = async (): Promise<ListType[]> => {
-  const response = await apiRequest<PagedResult<ApiListType>>("/api/lists?page=1&pageSize=200");
+  const response = await apiRequest<PagedResult<ApiListType>>(`${routes.lists.root}?page=1&pageSize=200`);
   return response.items;
 };
 
 export const getList = async (id: string): Promise<ListType> =>
-  apiRequest<ListType>(`/api/lists/${id}`);
+  apiRequest<ListType>(routes.lists.byId(id));
 
 export const createList = async (name: string): Promise<ListType> =>
-  apiRequest<ListType>("/api/lists", {
+  apiRequest<ListType>(routes.lists.root, {
     method: "POST",
     body: JSON.stringify({
       name,
@@ -419,7 +455,7 @@ export const updateList = async (
   body: Partial<Pick<ListType, "name" | "description" | "visibility" | "publicSlug">>,
 ): Promise<ListType> => {
   const current = await getList(id);
-  return apiRequest<ListType>(`/api/lists/${id}`, {
+  return apiRequest<ListType>(routes.lists.byId(id), {
     method: "PUT",
     body: JSON.stringify({
       name: body.name ?? current.name,
