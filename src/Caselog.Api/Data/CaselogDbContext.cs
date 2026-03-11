@@ -41,6 +41,7 @@ public class CaselogDbContext(DbContextOptions<CaselogDbContext> options) : DbCo
 
         modelBuilder.Entity<ListType>().Property(x => x.Visibility).HasConversion<string>();
         modelBuilder.Entity<ListType>().HasIndex(x => x.PublicSlug).IsUnique().HasFilter("\"PublicSlug\" IS NOT NULL");
+        modelBuilder.Entity<ListTypeField>().ToTable("ListFields");
         modelBuilder.Entity<ListTypeField>().Property(x => x.FieldType).HasConversion<string>();
         modelBuilder.Entity<ListTypeField>().HasOne(x => x.ListType).WithMany(x => x.Fields).HasForeignKey(x => x.ListTypeId);
         modelBuilder.Entity<ListEntry>().HasOne(x => x.ListType).WithMany(x => x.Entries).HasForeignKey(x => x.ListTypeId);

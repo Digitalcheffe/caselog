@@ -2,7 +2,12 @@ using Caselog.Api.Data.Entities;
 
 namespace Caselog.Api.Models;
 
-public sealed record MindMapRequest(string Title, Visibility Visibility, string? PublicSlug);
+public sealed class MindMapRequest
+{
+    public string? Title { get; init; }
+    public Visibility? Visibility { get; init; }
+    public string? PublicSlug { get; init; }
+}
 
 public sealed record MindMapResponse(
     Guid Id,

@@ -13,6 +13,14 @@ namespace Caselog.Api.Controllers;
 [Tags("Logs")]
 public sealed class LogsController(CaselogDbContext dbContext, LogSearchIndexService searchIndexService, TaggingService taggingService) : BaseApiController
 {
+
+    [HttpGet("~/api/kases/{kaseId:guid}/logs")]
+    public Task<ActionResult<ApiEnvelope<PagedResult<LogResponse>>>> GetLogsForKase(Guid kaseId, [FromQuery] PaginationQuery query, CancellationToken cancellationToken = default)
+        => GetLogs(query, kaseId, false, cancellationToken);
+
+    [HttpPost("~/api/kases/{kaseId:guid}/logs")]
+    public Task<ActionResult<ApiEnvelope<LogResponse>>> CreateLogForKase(Guid kaseId, [FromBody] CreateKaseLogRequest request, CancellationToken cancellationToken)
+        => CreateLog(new CreateLogRequest(kaseId, request.Title, request.Content ?? string.Empty, request.Visibility ?? Visibility.Private, request.PublicSlug), cancellationToken);
     [HttpGet]
     public async Task<ActionResult<ApiEnvelope<PagedResult<LogResponse>>>> GetLogs([FromQuery] PaginationQuery query, [FromQuery] Guid? kaseId, [FromQuery] bool unassigned = false, CancellationToken cancellationToken = default)
     {
