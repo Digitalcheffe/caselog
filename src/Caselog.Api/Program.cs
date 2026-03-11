@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Serilog;
 using Serilog.Events;
+using SerilogLog = Serilog.Log;
 using MsLogger = Microsoft.Extensions.Logging.ILogger;
 using SerilogLogger = Serilog.ILogger;
 
