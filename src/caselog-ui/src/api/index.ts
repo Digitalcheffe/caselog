@@ -566,8 +566,8 @@ export type AdminUserUpdateInput = {
 
 type ApiUser = {
   id: string;
-  firstName: string;
-  lastName: string;
+  firstName?: string | null;
+  lastName?: string | null;
   fullName: string;
   email: string;
   role: "admin" | "member";
@@ -575,16 +575,24 @@ type ApiUser = {
   lastLoginAt: string | null;
 };
 
-const toAdminUser = (user: ApiUser): AdminUser => ({
-  id: user.id,
-  firstName: user.firstName,
-  lastName: user.lastName,
-  name: user.fullName,
-  email: user.email,
-  role: user.role,
-  enabled: !user.isDisabled,
-  lastLoginAt: user.lastLoginAt,
-});
+const toAdminUser = (user: ApiUser): AdminUser => {
+  const fullNameParts = user.fullName.trim().split(/\s+/).filter(Boolean);
+  const fallbackFirstName = fullNameParts.at(0) ?? "";
+  const fallbackLastName = fullNameParts.slice(1).join(" ");
+  const firstName = user.firstName?.trim() || fallbackFirstName;
+  const lastName = user.lastName?.trim() || fallbackLastName;
+
+  return {
+    id: user.id,
+    firstName,
+    lastName,
+    name: user.fullName || `${firstName} ${lastName}`.trim(),
+    email: user.email,
+    role: user.role,
+    enabled: !user.isDisabled,
+    lastLoginAt: user.lastLoginAt,
+  };
+};
 
 export const getAdminUsers = async (): Promise<AdminUser[]> => (await apiRequest<ApiUser[]>("/api/users")).map(toAdminUser);
 
