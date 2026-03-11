@@ -736,3 +736,80 @@ button {
   margin-top: 12px;
   flex-wrap: wrap;
 }
+
+.top-search-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.kase-create-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(220px, 2fr) auto;
+  gap: 8px;
+  width: min(720px, 100%);
+}
+
+.mindmap-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 12px;
+}
+
+.mindmap-canvas {
+  height: 70vh;
+  min-height: 420px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mindmap-node {
+  min-width: 140px;
+  max-width: 220px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  border-radius: 8px;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.mindmap-node.selected {
+  border-color: var(--color-accent);
+}
+
+.mindmap-modal {
+  width: min(560px, 92vw);
+}
+
+.mindmap-attach-list {
+  margin-top: 10px;
+  max-height: 260px;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+}
+
+.mindmap-attach-list button {
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+  border-radius: 6px;
+  padding: 8px;
+  text-align: left;
+}
+
+@media (max-width: 960px) {
+  .kase-create-row {
+    grid-template-columns: 1fr;
+  }
+
+  .mindmap-editor-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .top-search-form .btn {
+    display: none;
+  }
+}

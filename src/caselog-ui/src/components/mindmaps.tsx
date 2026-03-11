@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
   type Edge,
   type Node,
-  type NodeChange,
-  applyNodeChanges,
+  type NodeProps,
 } from "@xyflow/react";
 import {
   attachMindMapToPage,
@@ -25,275 +24,199 @@ import {
 import type { ApiError } from "../api/client";
 import { Button, Card, EmptyState, Input, MetadataLine, PageHeader, Spinner } from "./ui";
 
-const flattenNodes = (root: MindMapNode): MindMapNode[] => {
-  const stack = [root];
+const mapNode = ({ data, selected }: NodeProps<Node<{ label: string }>>) => (
+  <div className={`mindmap-node ${selected ? "selected" : ""}`}>
+    <span>{data.label}</span>
+  </div>
+);
+
+const nodeTypes = { mapNode };
+
+const flatten = (root: MindMapNode): MindMapNode[] => {
+  const queue = [root];
   const nodes: MindMapNode[] = [];
-  while (stack.length > 0) {
-    const current = stack.pop();
+  while (queue.length) {
+    const current = queue.shift();
     if (!current) continue;
     nodes.push(current);
-    for (let index = current.children.length - 1; index >= 0; index -= 1) stack.push(current.children[index]);
+    queue.push(...current.children);
   }
   return nodes;
 };
 
-const countNodes = (node: MindMapNode): number =>
-  1 + node.children.reduce((sum: number, child: MindMapNode) => sum + countNodes(child), 0);
-
-const buildInitialPositions = (nodes: MindMapNode[]) => {
+const toFlow = (nodes: MindMapNode[]): Node[] => {
   const byParent = new Map<string | null, MindMapNode[]>();
-  nodes.forEach((node) => byParent.set(node.parentNodeId, [...(byParent.get(node.parentNodeId) ?? []), node]));
-  const root = nodes.find((node) => node.parentNodeId === null);
-  if (!root) return new Map<string, { x: number; y: number }>();
+  nodes.forEach((n) => byParent.set(n.parentNodeId, [...(byParent.get(n.parentNodeId) ?? []), n]));
+  const root = nodes.find((n) => n.parentNodeId === null);
+  if (!root) return [];
 
-  const result = new Map<string, { x: number; y: number }>();
-  const queue: Array<{ nodeId: string; level: number; x: number }> = [{ nodeId: root.id, level: 0, x: 0 }];
-  while (queue.length > 0) {
+  const positions = new Map<string, { x: number; y: number }>();
+  const queue: Array<{ id: string; level: number; x: number }> = [{ id: root.id, level: 0, x: 0 }];
+  while (queue.length) {
     const current = queue.shift();
     if (!current) continue;
-    result.set(current.nodeId, { x: current.x, y: current.level * 100 });
-    const children = byParent.get(current.nodeId) ?? [];
-    const totalWidth = (children.length - 1) * 160;
+    positions.set(current.id, { x: current.x, y: current.level * 140 });
+    const children = byParent.get(current.id) ?? [];
+    const span = (children.length - 1) * 220;
     children.forEach((child, index) => {
-      queue.push({ nodeId: child.id, level: current.level + 1, x: current.x - totalWidth / 2 + index * 160 });
+      queue.push({ id: child.id, level: current.level + 1, x: current.x - span / 2 + index * 220 });
     });
   }
-  return result;
+
+  return nodes.map((n) => ({ id: n.id, type: "mapNode", position: positions.get(n.id) ?? { x: 0, y: 0 }, data: { label: n.label } }));
 };
 
 export const MindMapsIndexPage = ({ navigate, onToast }: { navigate: (path: string) => void; onToast: (value: string) => void }) => {
   const [mindMaps, setMindMaps] = useState<Array<MindMap & { nodeCount: number }>>([]);
-  const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
+  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
       setLoading(true);
-      setError(null);
       try {
         const maps = await getMindMaps();
-        const withCounts = await Promise.all(
-          maps.map(async (map: MindMap) => {
-            const detail = await getMindMap(map.id);
-            return { ...map, nodeCount: countNodes(detail.rootNode) };
-          }),
-        );
-        setMindMaps(withCounts);
+        const counts = await Promise.all(maps.map(async (map) => ({ ...map, nodeCount: flatten((await getMindMap(map.id)).rootNode).length })));
+        setMindMaps(counts);
       } catch (err) {
         const apiError = err as ApiError;
-        const message = apiError.status ? `Error ${apiError.status}: ${apiError.message}` : "Network error — check connection";
-        setError(message);
-        onToast(message);
+        onToast(apiError.message || "Failed to load mind maps");
       } finally {
         setLoading(false);
       }
     })();
   }, [onToast]);
 
-  return (
-    <div>
-      <PageHeader title="Mind Maps" actions={<Button onClick={() => setOpen(true)}>New Mind Map</Button>} />
-      {loading ? <Card><Spinner /></Card> : null}
-      {error ? <Card><p>{error}</p></Card> : null}
-      {!loading && !error && mindMaps.length === 0 ? (
-        <EmptyState title="No mind maps yet" body="Create one to start mapping ideas." />
-      ) : !loading && !error ? (
-        <div className="index-grid">
-          {mindMaps.map((map) => (
-            <Card key={map.id}>
-              <MetadataLine>{new Date(map.updatedAt).toLocaleDateString()}</MetadataLine>
-              <h3>{map.title}</h3>
-              <p className="muted">{map.nodeCount} nodes</p>
-              <Button onClick={() => navigate(`/mindmaps/${map.id}`)}>Open</Button>
-            </Card>
-          ))}
-        </div>
-      ) : null}
-      {open ? (
-        <div className="dialog-backdrop">
-          <Card className="mindmap-modal">
-            <h3>New Mind Map</h3>
-            <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Title" />
-            <div className="row" style={{ marginTop: 12 }}>
-              <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button onClick={async () => {
-                if (!title.trim()) return;
-                try {
-                  const created = await createMindMap(title.trim());
-                  navigate(`/mindmaps/${created.id}`);
-                } catch {
-                  onToast("Failed to create mind map");
-                }
-              }}>Create</Button>
-            </div>
-          </Card>
-        </div>
-      ) : null}
+  return <div>
+    <PageHeader title="Mind Maps" actions={<Button onClick={() => setOpen(true)}>New Mind Map</Button>} />
+    {loading ? <Card><Spinner /></Card> : null}
+    {!loading && mindMaps.length === 0 ? <EmptyState title="No mind maps yet" body="Create one to start mapping ideas." /> : null}
+    <div className="index-grid">
+      {mindMaps.map((m) => <Card key={m.id}><MetadataLine>{new Date(m.updatedAt).toLocaleDateString()}</MetadataLine><h3>{m.title}</h3><p className="muted">{m.nodeCount} nodes</p><Button onClick={() => navigate(`/mindmaps/${m.id}`)}>Open</Button></Card>)}
     </div>
-  );
+    {open ? <div className="dialog-backdrop"><Card className="mindmap-modal"><h3>New Mind Map</h3><Input value={title} onChange={(e) => setTitle(e.target.value)} /><div className="row"><Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={async () => {
+      if (!title.trim()) return;
+      try { const created = await createMindMap(title.trim()); navigate(`/mindmaps/${created.id}`); } catch { onToast("Failed to create mind map"); }
+    }}>Create</Button></div></Card></div> : null}
+  </div>;
 };
 
 export const MindMapEditorPage = ({ id, onToast }: { id: string; onToast: (value: string) => void }) => {
   const [detail, setDetail] = useState<MindMapDetail | null>(null);
-  const [nodeMap, setNodeMap] = useState<Record<string, MindMapNode>>({});
-  const [flowNodes, setFlowNodes] = useState<Node[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
+  const [editingLabel, setEditingLabel] = useState("");
+  const [logs, setLogs] = useState<Log[]>([]);
   const [attachOpen, setAttachOpen] = useState(false);
   const [pageQuery, setPageQuery] = useState("");
-  const [logs, setPages] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const saveTimer = useRef<number | null>(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      setError(null);
       const loaded = await getMindMap(id);
       setDetail(loaded);
-      const flatNodes = flattenNodes(loaded.rootNode);
-      const map = Object.fromEntries(flatNodes.map((node) => [node.id, node]));
-      setNodeMap(map);
-      const computed = buildInitialPositions(flatNodes);
-      setFlowNodes(flatNodes.map((node) => ({
-        id: node.id,
-        data: { label: node.label },
-        position: computed.get(node.id) ?? { x: 0, y: 0 },
-        style: {
-          borderRadius: 8,
-          background: "var(--color-bg-elevated)",
-          border: "1px solid var(--color-border)",
-          color: "white",
-          padding: 10,
-        },
-      })));
+      const root = loaded.rootNode.id;
+      setSelectedId((current) => current && loaded.nodes.some((n) => n.id === current) ? current : root);
+      const active = loaded.nodes.find((n) => n.id === (selectedId ?? root));
+      setEditingLabel(active?.label ?? "");
     } catch (err) {
       const apiError = err as ApiError;
-      const message = apiError.status ? `Error ${apiError.status}: ${apiError.message}` : "Network error — check connection";
-      setError(message);
-      onToast(message);
+      onToast(apiError.message || "Failed to load mind map");
     } finally {
       setLoading(false);
     }
-  }, [id, onToast]);
+  }, [id, onToast, selectedId]);
 
   useEffect(() => { void load(); }, [load]);
 
+  const nodeMap = useMemo(() => Object.fromEntries((detail?.nodes ?? []).map((n) => [n.id, n])), [detail]);
+  const flowNodes = useMemo(() => toFlow(detail?.nodes ?? []), [detail]);
+  const edges: Edge[] = useMemo(() => (detail?.nodes ?? []).filter((n) => n.parentNodeId).map((n) => ({ id: `${n.parentNodeId}-${n.id}`, source: n.parentNodeId as string, target: n.id })), [detail]);
 
-  useEffect(() => {
-    if (!detail) return;
-    if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    saveTimer.current = window.setTimeout(() => {
-      void updateMindMap(id, { title: detail.title });
-    }, 1000);
-    return () => {
-      if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    };
-  }, [detail, flowNodes, id]);
+  const selectedNode = selectedId ? nodeMap[selectedId] : null;
 
-  const persistPositions = (_nodes: Node[]) => {};
+  const addChild = async () => {
+    if (!selectedId) return;
+    try {
+      const created = await createMindMapNode(id, { parentId: selectedId, label: "New node" });
+      await load();
+      setSelectedId(created.id);
+      setEditingLabel(created.label);
+    } catch {
+      onToast("Failed to add node");
+    }
+  };
 
-  const edges: Edge[] = useMemo(
-    () => Object.values(nodeMap).filter((node) => node.parentNodeId).map((node) => ({ id: `${node.parentNodeId}-${node.id}`, source: node.parentNodeId as string, target: node.id })),
-    [nodeMap],
-  );
-
-  const updateNode = async (nodeId: string, patch: Partial<Pick<MindMapNode, "label">>) => {
-    const current = nodeMap[nodeId];
-    if (!current) return;
-    await updateMindMapNode(id, nodeId, {
-      parentNodeId: current.parentNodeId,
-      label: patch.label ?? current.label,
-      notes: current.notes,
-      sortOrder: current.sortOrder,
-    });
+  const saveSelectedLabel = async () => {
+    if (!selectedNode) return;
+    try {
+      await updateMindMapNode(id, selectedNode.id, { label: editingLabel.trim() || "Untitled", parentNodeId: selectedNode.parentNodeId, notes: selectedNode.notes ?? null, sortOrder: selectedNode.sortOrder ?? 0 });
+      await load();
+    } catch {
+      onToast("Failed to save node");
+    }
   };
 
   if (loading) return <Card><Spinner /></Card>;
-  if (error) return <Card><p>{error}</p></Card>;
+  if (!detail) return <EmptyState title="Mind map missing" body="Not found." />;
 
-  return (
-    <div className="mindmap-editor-page" onClick={() => setContextMenu(null)}>
-      <div className="mindmap-toolbar">
-        <Button variant="secondary" disabled={!selectedId} onClick={() => selectedId && void createMindMapNode(id, { parentId: selectedId, label: "New node" }).then(load)}>Add child</Button>
-        <Button variant="danger" disabled={!selectedId} onClick={() => selectedId && void deleteMindMapNode(id, selectedId).then(load)}>Delete node</Button>
-        <Button variant="secondary" onClick={async () => { setPages(await getPages()); setAttachOpen(true); }}>Attach to Log</Button>
-      </div>
-      <div className="mindmap-canvas">
-        <ReactFlow
-          nodes={flowNodes.map((node) => ({
-            ...node,
-            style: { ...node.style, border: selectedId === node.id ? "1px solid var(--color-accent)" : "1px solid var(--color-border)" },
-            data: {
-              ...node.data,
-              label: editingId === node.id ? (
-                <Input
-                  autoFocus
-                  defaultValue={String(node.data.label)}
-                  onBlur={(event) => void updateNode(node.id, { label: event.target.value }).then(() => { setEditingId(null); void load(); })}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      void updateNode(node.id, { label: (event.currentTarget as HTMLInputElement).value }).then(() => { setEditingId(null); void load(); });
-                    }
-                  }}
-                />
-              ) : (
-                <span>{String(node.data.label)}</span>
-              ),
-            },
-          }))}
-          edges={edges}
-          fitView
-          onNodesChange={(changes: NodeChange[]) => {
-            setFlowNodes((current) => {
-              const next = applyNodeChanges(changes, current);
-              persistPositions(next);
-              return next;
-            });
-          }}
-          onNodeClick={(_, node) => setSelectedId(node.id)}
-          onNodeDoubleClick={(_, node) => setEditingId(node.id)}
-          onNodeContextMenu={(event, node) => {
-            event.preventDefault();
-            setSelectedId(node.id);
-            setContextMenu({ x: event.clientX, y: event.clientY, nodeId: node.id });
-          }}
-          onNodeDragStop={(_, node) => persistPositions(flowNodes.map((item) => (item.id === node.id ? { ...item, position: node.position } : item)))}
-        >
-          <Controls />
-          <Background />
-        </ReactFlow>
-      </div>
-      {contextMenu ? (
-        <div className="mindmap-context" style={{ top: contextMenu.y, left: contextMenu.x }}>
-          <button type="button" onClick={() => void createMindMapNode(id, { parentId: contextMenu.nodeId, label: "New node" }).then(load)}>Add child</button>
-          <button type="button" onClick={() => void deleteMindMapNode(id, contextMenu.nodeId).then(load)}>Delete node and subtree</button>
+  return <div className="mindmap-editor-page">
+    <PageHeader title={detail.title} subtitle="Interactive KaseLog mind map editor" actions={<div className="row"><Button variant="secondary" onClick={async () => {
+      const next = window.prompt("Mind map title", detail.title);
+      if (!next || !next.trim()) return;
+      await updateMindMap(id, { title: next.trim() });
+      await load();
+    }}>Rename</Button><Button onClick={() => void addChild()} disabled={!selectedId}>Add child node</Button></div>} />
+    <div className="mindmap-editor-layout">
+      <Card>
+        <div className="mindmap-canvas">
+          <ReactFlow nodes={flowNodes} edges={edges} nodeTypes={nodeTypes} fitView onNodeClick={(_, n) => {
+            setSelectedId(n.id);
+            setEditingLabel(String(n.data.label ?? ""));
+          }}>
+            <Controls />
+            <Background />
+          </ReactFlow>
         </div>
-      ) : null}
-      {attachOpen ? (
-        <div className="dialog-backdrop">
-          <Card className="mindmap-modal">
-            <h3>Attach to Log</h3>
-            <Input value={pageQuery} onChange={(event) => setPageQuery(event.target.value)} placeholder="Search logs" />
-            <div className="mindmap-attach-list">
-              {logs.filter((page) => page.title.toLowerCase().includes(pageQuery.toLowerCase())).map((page) => (
-                <button key={page.id} type="button" onClick={async () => {
-                  await attachMindMapToPage(id, page.id);
-                  setAttachOpen(false);
-                  onToast("Attached");
-                }}>{page.title}</button>
-              ))}
-            </div>
-            <div className="row" style={{ marginTop: 12 }}>
-              <Button variant="secondary" onClick={() => setAttachOpen(false)}>Close</Button>
-            </div>
-          </Card>
+      </Card>
+      <Card>
+        <h3>Node details</h3>
+        {selectedNode ? <>
+          <MetadataLine>Selected node</MetadataLine>
+          <Input value={editingLabel} onChange={(e) => setEditingLabel(e.target.value)} onBlur={() => void saveSelectedLabel()} />
+          <div className="row" style={{ marginTop: 10 }}>
+            <Button variant="secondary" onClick={() => void saveSelectedLabel()}>Save label</Button>
+            <Button variant="danger" disabled={selectedNode.parentNodeId === null} onClick={async () => {
+              try { await deleteMindMapNode(id, selectedNode.id); await load(); } catch { onToast("Failed to delete node"); }
+            }}>Delete node</Button>
+          </div>
+        </> : <p className="muted">Select a node to edit.</p>}
+
+        <div style={{ marginTop: 16 }}>
+          <Button variant="secondary" onClick={async () => { setLogs(await getPages()); setAttachOpen(true); }}>Attach to Log</Button>
         </div>
-      ) : null}
+      </Card>
     </div>
-  );
+    {attachOpen ? (
+      <div className="dialog-backdrop">
+        <Card className="mindmap-modal">
+          <h3>Attach to Log</h3>
+          <Input value={pageQuery} onChange={(event) => setPageQuery(event.target.value)} placeholder="Search logs" />
+          <div className="mindmap-attach-list">
+            {logs.filter((page) => page.title.toLowerCase().includes(pageQuery.toLowerCase())).map((page) => (
+              <button key={page.id} type="button" onClick={async () => {
+                await attachMindMapToPage(id, page.id);
+                setAttachOpen(false);
+                onToast("Attached");
+              }}>{page.title}</button>
+            ))}
+          </div>
+          <div className="row" style={{ marginTop: 12 }}>
+            <Button variant="secondary" onClick={() => setAttachOpen(false)}>Close</Button>
+          </div>
+        </Card>
+      </div>
+    ) : null}
+  </div>;
 };

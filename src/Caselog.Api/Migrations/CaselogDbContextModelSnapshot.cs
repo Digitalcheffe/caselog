@@ -20,7 +20,9 @@ public partial class CaselogDbContextModelSnapshot : ModelSnapshot
             b.Property<Guid>("Id");
             b.Property<DateTime>("CreatedAt");
             b.Property<string>("Email");
+            b.Property<string>("FirstName");
             b.Property<bool>("IsDisabled");
+            b.Property<string>("LastName");
             b.Property<DateTime?>("LastLoginAt");
             b.Property<string>("PasswordHash");
             b.Property<string>("Role");

@@ -1,5 +1,5 @@
-import type { PropsWithChildren } from 'react';
-import { Input } from './ui';
+import type { FormEvent, PropsWithChildren } from 'react';
+import { Button, Input } from './ui';
 
 type NavItem = {
   path: string;
@@ -45,23 +45,31 @@ const NavButton = ({
   </button>
 );
 
-export const TopNav = ({ onNavigate, onSearch, searchValue, onToggleTheme, isDark, currentPath }: { onNavigate: (path: string) => void; onSearch: (value: string) => void; searchValue: string; onToggleTheme: () => void; isDark: boolean; currentPath: string }) => (
-  <header className="top-nav-wrap">
+export const TopNav = ({ onNavigate, onSearch, searchValue, onToggleTheme, isDark, currentPath }: { onNavigate: (path: string) => void; onSearch: (value: string) => void; searchValue: string; onToggleTheme: () => void; isDark: boolean; currentPath: string }) => {
+  const onSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    onNavigate(`/search?q=${encodeURIComponent(searchValue.trim())}`);
+  };
+
+  return <header className="top-nav-wrap">
     <div className="top-nav-inner">
       <div className="top-nav-left">
-        <button type="button" className="wordmark" onClick={() => onNavigate('/')}>Caselog</button>
+        <button type="button" className="wordmark" onClick={() => onNavigate('/')}>KaseLog</button>
         <nav className="top-nav-links" aria-label="Primary navigation">
           {topNavItems.map((item) => <NavButton key={item.path} item={item} currentPath={currentPath} onNavigate={onNavigate} className="top-nav-button" />)}
         </nav>
       </div>
       <div className="top-nav-right">
-        <Input className="top-search" value={searchValue} placeholder="Search…" onChange={(e) => onSearch(e.target.value)} />
+        <form className="top-search-form" onSubmit={onSubmit}>
+          <Input className="top-search" value={searchValue} placeholder="Search KaseLog" onChange={(e) => onSearch(e.target.value)} />
+          <Button type="submit" variant="secondary">Search</Button>
+        </form>
         <button type="button" className="theme-toggle" onClick={onToggleTheme}>{isDark ? '☀️' : '🌙'}</button>
         <button type="button" className="avatar-button" onClick={() => onNavigate('/settings/profile')} aria-label="Open profile">A</button>
       </div>
     </div>
-  </header>
-);
+  </header>;
+};
 
 export const Sidebar = ({ onNavigate, isAdmin, currentPath }: { onNavigate: (path: string) => void; isAdmin: boolean; currentPath: string }) => (
   <aside className="sidebar" aria-label="Sidebar navigation">

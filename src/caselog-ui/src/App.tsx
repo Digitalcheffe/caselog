@@ -3,6 +3,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ClipboardEvent,
   type FormEvent,
   type KeyboardEvent,
 } from "react";
@@ -105,9 +106,8 @@ const routes = [
 const AppInner = () => {
   const { theme, toggleTheme } = useTheme();
   const { currentRoute, pathname, params, navigate } = useRouter(routes);
-  const [search, setSearch] = useState(
-    new URLSearchParams(window.location.search).get("q") ?? "",
-  );
+  const initialSearch = new URLSearchParams(window.location.search).get("q") ?? "";
+  const [search, setSearch] = useState(initialSearch);
   const [debouncedSearch, setDebouncedSearch] = useState(search);
   const [logs, setLogs] = useState<Log[]>([]);
   const [kases, setKases] = useState<Kase[]>([]);
@@ -135,6 +135,15 @@ const AppInner = () => {
     const id = window.setTimeout(() => setToast(""), 1800);
     return () => window.clearTimeout(id);
   }, [toast]);
+
+
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q") ?? "";
+    if (q !== search) {
+      setSearch(q);
+      setDebouncedSearch(q);
+    }
+  }, [pathname]);
 
 
   useEffect(() => {
@@ -326,7 +335,7 @@ const AppInner = () => {
       break;
     }
     case "/search":
-      content = <SearchPage query={debouncedSearch} />;
+      content = <SearchPage query={debouncedSearch} navigate={navigate} />;
       break;
     case "/mindmaps":
       content = <MindMapsIndexPage navigate={navigate} onToast={setToast} />;
@@ -423,7 +432,7 @@ const LoginPage = ({ navigate, onToast }: { navigate: (path: string) => void; on
   return (
     <div className="login-page">
       <Card>
-        <PageHeader title="Login" subtitle="Sign in to Caselog" />
+        <PageHeader title="Login" subtitle="Sign in to KaseLog" />
         <form onSubmit={(event) => void handleSubmit(event)}>
           <Input value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email" />
           <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" />
@@ -533,7 +542,7 @@ const FollowUps = () => {
   );
 };
 
-const SearchPage = ({ query }: { query: string }) => {
+const SearchPage = ({ query, navigate }: { query: string; navigate: (path: string) => void }) => {
   const [results, setResults] = useState<Log[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -553,7 +562,7 @@ const SearchPage = ({ query }: { query: string }) => {
 
   return (
     <div>
-      <PageHeader title="Search" subtitle={`Results for "${query || "..."}"`} />
+      <PageHeader title="Search" subtitle={query ? `Results for "${query}"` : "Type a query above and press Search."} />
       {loading ? <Card><Spinner /></Card> : null}
       {error ? <Card><p>{error}</p></Card> : null}
       {!loading && !error && query && results.length === 0 ? <EmptyState title="No matches" body="Try a different search." /> : null}
@@ -563,6 +572,7 @@ const SearchPage = ({ query }: { query: string }) => {
             <Card key={r.id}>
               <MetadataLine>{r.kaseId ? "kase" : "loose end"}</MetadataLine>
               <h3>{r.title}</h3>
+              <Button variant="ghost" onClick={() => navigate(`/logs/${r.id}`)}>Open</Button>
               <p>{r.content.slice(0, 90)}</p>
               <TagList tags={r.tags} />
             </Card>
@@ -652,7 +662,7 @@ const ListsIndexPage = ({
           <Card className="modal-card">
             <h3>New List</h3>
             <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="List name" />
-            <div className="row">
+            <div className="kase-create-row">
               <Button variant="secondary" onClick={() => setOpen(false)}>Cancel</Button>
               <Button onClick={() => void handleCreate()}>Create</Button>
             </div>
@@ -1037,7 +1047,7 @@ const KasesPage = ({
       <PageHeader
         title="Kases"
         actions={
-          <div className="row">
+          <div className="kase-create-row">
             <Input
               placeholder="Kase name"
               value={name}
@@ -1078,13 +1088,20 @@ const KaseDetailPage = ({
   onLogCreated: (log: Log) => void;
   onToast: (message: string) => void;
 }) => {
+  const [creating, setCreating] = useState(false);
+
   const createNewPage = async () => {
+    setCreating(true);
     try {
       const created = await createKaseLog(kase.id, { title: "Untitled" });
       onLogCreated(created);
+      onToast("Log created");
       navigate(`/logs/${created.id}`);
-    } catch {
-      onToast("Failed to create page");
+    } catch (error) {
+      const apiError = error as ApiError;
+      onToast(apiError.message || "Failed to create log");
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -1092,7 +1109,7 @@ const KaseDetailPage = ({
     <div>
       <PageHeader
         title={kase.name}
-        actions={<Button onClick={() => void createNewPage()}>New Log</Button>}
+        actions={<Button disabled={creating} onClick={() => void createNewPage()}>{creating ? "Creating..." : "New Log"}</Button>}
       />
       {logs.length === 0 ? (
         <Card className="empty-state-card">
@@ -1320,6 +1337,117 @@ const PageEditor = ({
     setDraft((previous) => ({ ...previous, content: html }));
   };
 
+  const parseInlineMarkdown = (line: string): string => {
+    let out = line
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    out = out.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    out = out.replace(/__(.+?)__/g, "<strong>$1</strong>");
+    out = out.replace(/\*(.+?)\*/g, "<em>$1</em>");
+    out = out.replace(/_(.+?)_/g, "<em>$1</em>");
+    out = out.replace(/`([^`]+)`/g, "<code>$1</code>");
+    out = out.replace(/\[(.+?)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    return out;
+  };
+
+  const markdownToHtml = (value: string): string => {
+    const lines = value.split(/\r?\n/);
+    const html: string[] = [];
+    let inUl = false;
+    let inOl = false;
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) {
+        if (inUl) {
+          html.push("</ul>");
+          inUl = false;
+        }
+        if (inOl) {
+          html.push("</ol>");
+          inOl = false;
+        }
+        continue;
+      }
+
+      const heading = line.match(/^(#{1,3})\s+(.+)/);
+      if (heading) {
+        if (inUl) {
+          html.push("</ul>");
+          inUl = false;
+        }
+        if (inOl) {
+          html.push("</ol>");
+          inOl = false;
+        }
+        const level = heading[1].length;
+        html.push(`<h${level}>${parseInlineMarkdown(heading[2])}</h${level}>`);
+        continue;
+      }
+
+      const listItem = line.match(/^[-*]\s+(.+)/);
+      if (listItem) {
+        if (inOl) {
+          html.push("</ol>");
+          inOl = false;
+        }
+        if (!inUl) {
+          html.push("<ul>");
+          inUl = true;
+        }
+        html.push(`<li>${parseInlineMarkdown(listItem[1])}</li>`);
+        continue;
+      }
+
+      const ordered = line.match(/^\d+\.\s+(.+)/);
+      if (ordered) {
+        if (inUl) {
+          html.push("</ul>");
+          inUl = false;
+        }
+        if (!inOl) {
+          html.push("<ol>");
+          inOl = true;
+        }
+        html.push(`<li>${parseInlineMarkdown(ordered[1])}</li>`);
+        continue;
+      }
+
+      if (line.startsWith("> ")) {
+        if (inUl) {
+          html.push("</ul>");
+          inUl = false;
+        }
+        if (inOl) {
+          html.push("</ol>");
+          inOl = false;
+        }
+        html.push(`<blockquote>${parseInlineMarkdown(line.slice(2))}</blockquote>`);
+        continue;
+      }
+
+      html.push(`<p>${parseInlineMarkdown(line)}</p>`);
+    }
+
+    if (inUl) html.push("</ul>");
+    if (inOl) html.push("</ol>");
+    return html.join("");
+  };
+
+  const handlePasteMarkdown = (event: ClipboardEvent<HTMLDivElement>) => {
+    const text = event.clipboardData.getData("text/plain");
+    if (!text || !/^(#{1,6}|[-*]\s|\d+\.\s|>\s|\*\*|`)/m.test(text)) {
+      return;
+    }
+
+    event.preventDefault();
+    const html = markdownToHtml(text);
+    document.execCommand("insertHTML", false, html);
+    const next = editorRef.current?.innerHTML ?? "";
+    setDraft((previous) => ({ ...previous, content: next }));
+  };
+
   return (
     <div>
       <MetadataLine>Home / Kase / {page.title}</MetadataLine>
@@ -1493,6 +1621,7 @@ const PageEditor = ({
                   content: (e.target as HTMLDivElement).innerHTML,
                 })
               }
+              onPaste={handlePasteMarkdown}
             >
               {draft.content}
             </div>
@@ -1628,7 +1757,8 @@ const PageEditor = ({
 const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState<"profile" | "security" | "apikeys">("profile");
   const [profile, setProfile] = useState<ProfileResponse | null>(null);
-  const [profileName, setProfileName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [emailDraft, setEmailDraft] = useState("");
   const [isEmailEditing, setIsEmailEditing] = useState(false);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
@@ -1651,7 +1781,7 @@ const SettingsPage = () => {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  const initials = (profile?.name ?? "")
+  const initials = (profile?.fullName ?? "")
     .split(" ")
     .filter(Boolean)
     .slice(0, 2)
@@ -1688,7 +1818,8 @@ const SettingsPage = () => {
           getApiKeys(),
         ]);
         setProfile(profileResponse);
-        setProfileName(profileResponse.name ?? "");
+        setFirstName(profileResponse.firstName ?? "");
+        setLastName(profileResponse.lastName ?? "");
         setEmailDraft(profileResponse.email ?? "");
         setApiKeys(keyResponse);
       } catch {
@@ -1708,9 +1839,9 @@ const SettingsPage = () => {
   }, [notice]);
 
   const saveName = async () => {
-    if (!profile || !profileName.trim()) return;
+    if (!profile) return;
     try {
-      const updated = await updateProfileName(profile.id, profileName.trim());
+      const updated = await updateProfileName(profile.id, firstName.trim(), lastName.trim());
       setProfile(updated);
       setNotice("Name updated");
     } catch {
@@ -1861,8 +1992,12 @@ const SettingsPage = () => {
           </div>
           <div className="settings-form-grid">
             <label>
-              <span className="meta-line">Name</span>
-              <Input value={profileName} onChange={(event) => setProfileName(event.target.value)} />
+              <span className="meta-line">First name</span>
+              <Input value={firstName} onChange={(event) => setFirstName(event.target.value)} />
+            </label>
+            <label>
+              <span className="meta-line">Last name</span>
+              <Input value={lastName} onChange={(event) => setLastName(event.target.value)} />
             </label>
             <div className="row settings-actions">
               <Button onClick={() => void saveName()}>Save</Button>
@@ -2077,13 +2212,15 @@ const AdminUsers = ({
   const [confirmDelete, setConfirmDelete] = useState<AdminUser | null>(null);
 
   const [newForm, setNewForm] = useState({
-    name: "",
+    firstName: "",
+    lastName: "",
     email: "",
     password: "",
     role: "member" as "admin" | "member",
   });
   const [editForm, setEditForm] = useState({
-    name: "",
+    firstName: "",
+    lastName: "",
     email: "",
     role: "member" as "admin" | "member",
     enabled: true,
@@ -2126,9 +2263,10 @@ const AdminUsers = ({
       setError("");
       try {
         const user = await getAdminUser(selectedId);
-        setEditUserName(user.name);
+        setEditUserName(user.name || `${user.firstName} ${user.lastName}`.trim());
         setEditForm({
-          name: user.name,
+          firstName: user.firstName,
+          lastName: user.lastName,
           email: user.email,
           role: user.role,
           enabled: user.enabled,
@@ -2147,8 +2285,8 @@ const AdminUsers = ({
     return <EmptyState title="Forbidden" body="Admin only" />;
   }
 
-  const validateUserForm = (input: { name: string; email: string; password?: string }) => {
-    if (!input.name.trim() || !input.email.trim()) {
+  const validateUserForm = (input: { firstName: string; lastName: string; email: string; password?: string }) => {
+    if (!input.firstName.trim() || !input.lastName.trim() || !input.email.trim()) {
       return "All fields are required";
     }
 
@@ -2171,12 +2309,21 @@ const AdminUsers = ({
         <PageHeader title="New user" />
         <Card className="admin-form-card">
           <label className="meta-label" htmlFor="new-user-name">
-            Full name
+            First name
           </label>
           <Input
-            id="new-user-name"
-            value={newForm.name}
-            onChange={(event) => setNewForm((previous) => ({ ...previous, name: event.target.value }))}
+            id="new-user-first-name"
+            value={newForm.firstName}
+            onChange={(event) => setNewForm((previous) => ({ ...previous, firstName: event.target.value }))}
+          />
+
+          <label className="meta-label" htmlFor="new-user-last-name">
+            Last name
+          </label>
+          <Input
+            id="new-user-last-name"
+            value={newForm.lastName}
+            onChange={(event) => setNewForm((previous) => ({ ...previous, lastName: event.target.value }))}
           />
 
           <label className="meta-label" htmlFor="new-user-email">
@@ -2230,7 +2377,8 @@ const AdminUsers = ({
 
                   try {
                     await createAdminUser({
-                      name: newForm.name.trim(),
+                      firstName: newForm.firstName.trim(),
+                      lastName: newForm.lastName.trim(),
                       email: newForm.email.trim(),
                       password: newForm.password,
                       role: newForm.role,
@@ -2263,12 +2411,21 @@ const AdminUsers = ({
           {error ? <p className="muted">{error}</p> : null}
 
           <label className="meta-label" htmlFor="edit-user-name">
-            Full name
+            First name
           </label>
           <Input
-            id="edit-user-name"
-            value={editForm.name}
-            onChange={(event) => setEditForm((previous) => ({ ...previous, name: event.target.value }))}
+            id="edit-user-first-name"
+            value={editForm.firstName}
+            onChange={(event) => setEditForm((previous) => ({ ...previous, firstName: event.target.value }))}
+          />
+
+          <label className="meta-label" htmlFor="edit-user-last-name">
+            Last name
+          </label>
+          <Input
+            id="edit-user-last-name"
+            value={editForm.lastName}
+            onChange={(event) => setEditForm((previous) => ({ ...previous, lastName: event.target.value }))}
           />
 
           <label className="meta-label" htmlFor="edit-user-email">
@@ -2322,7 +2479,8 @@ const AdminUsers = ({
 
                   try {
                     await updateAdminUser(selectedId, {
-                      name: editForm.name.trim(),
+                      firstName: editForm.firstName.trim(),
+                      lastName: editForm.lastName.trim(),
                       email: editForm.email.trim(),
                       role: editForm.role,
                       enabled: editForm.enabled,

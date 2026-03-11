@@ -83,7 +83,10 @@ public sealed class AuthController(
             return NotFoundProblem("Authenticated user was not found.");
         }
 
-        return Ok(new ApiEnvelope<AuthMeResponse>(new AuthMeResponse(user.Id, user.Email, user.Email, user.Role.ToString().ToLowerInvariant(), user.TwoFactorEnabled)));
+        var fullName = $"{user.FirstName} {user.LastName}".Trim();
+        if (string.IsNullOrWhiteSpace(fullName)) fullName = user.Email;
+
+        return Ok(new ApiEnvelope<AuthMeResponse>(new AuthMeResponse(user.Id, user.FirstName, user.LastName, fullName, user.Email, user.Role.ToString().ToLowerInvariant(), user.TwoFactorEnabled)));
     }
 
     [Authorize]

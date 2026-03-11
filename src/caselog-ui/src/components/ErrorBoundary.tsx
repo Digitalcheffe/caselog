@@ -28,7 +28,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         <div className="error-screen">
           <div className="panel">
             <p className="panel-meta accent">Something went wrong</p>
-            <h1 className="panel-title">Caselog hit an unexpected error.</h1>
+            <h1 className="panel-title">KaseLog hit an unexpected error.</h1>
           </div>
         </div>
       );

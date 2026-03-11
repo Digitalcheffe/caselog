@@ -46,7 +46,7 @@ export const AppShell = ({ theme, onToggleTheme, currentPath, onNavigate, childr
     <header className="app-header">
       <div className="header-inner">
         <div className="header-brand">
-          <span className="app-title">Caselog</span>
+          <span className="app-title">KaseLog</span>
           <nav className="top-nav">
             {navItems.map((item) => (
               <NavItem key={item.to} item={item} currentPath={currentPath} onNavigate={onNavigate} />

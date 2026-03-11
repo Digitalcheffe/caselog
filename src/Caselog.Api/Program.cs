@@ -190,6 +190,8 @@ await using (var scope = app.Services.CreateAsyncScope())
         {
             Id = Guid.NewGuid(),
             Email = "admin@caselog.local",
+            FirstName = "KaseLog",
+            LastName = "Admin",
             PasswordHash = PasswordHasher.Hash("ChangeMe123!"),
             Role = UserRole.Admin,
             CreatedAt = createdAt,
@@ -210,7 +212,7 @@ await using (var scope = app.Services.CreateAsyncScope())
         await dbContext.SaveChangesAsync();
 
         logger.LogWarning("========================================================");
-        logger.LogWarning("Caselog default admin account created.");
+        logger.LogWarning("KaseLog default admin account created.");
         logger.LogWarning("Email: {Email}", adminUser.Email);
         logger.LogWarning("Password: ChangeMe123! (rotate immediately)");
         logger.LogWarning("API Key (shown once): {ApiKey}", defaultApiKey);
