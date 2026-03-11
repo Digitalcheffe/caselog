@@ -17,6 +17,7 @@ public class CaselogDbContext(DbContextOptions<CaselogDbContext> options) : DbCo
     public DbSet<ListEntryFieldValue> ListEntryFieldValues => Set<ListEntryFieldValue>();
     public DbSet<MindMap> MindMaps => Set<MindMap>();
     public DbSet<MindMapNode> MindMapNodes => Set<MindMapNode>();
+    public DbSet<FollowUp> FollowUps => Set<FollowUp>();
     public DbSet<Note> Notes => Set<Note>();
     public DbSet<SearchIndexEntry> SearchIndex => Set<SearchIndexEntry>();
 
