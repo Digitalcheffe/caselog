@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 namespace Caselog.Api.Migrations;
 
 [DbContext(typeof(CaselogDbContext))]
-partial class CaselogDbContextModelSnapshot : ModelSnapshot
+public partial class CaselogDbContextModelSnapshot : ModelSnapshot
 {
     protected override void BuildModel(ModelBuilder modelBuilder)
     {
