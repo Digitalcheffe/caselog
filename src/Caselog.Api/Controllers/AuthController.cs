@@ -67,6 +67,19 @@ public sealed class AuthController(
 
         if (user is null)
         {
+            var apiKeyIdClaim = User.FindFirstValue("api_key_id");
+            if (Guid.TryParse(apiKeyIdClaim, out var apiKeyId))
+            {
+                user = await dbContext.UserApiKeys
+                    .AsNoTracking()
+                    .Where(x => x.Id == apiKeyId)
+                    .Select(x => x.User)
+                    .SingleOrDefaultAsync(cancellationToken);
+            }
+        }
+
+        if (user is null || user.IsDisabled)
+        {
             return NotFoundProblem("Authenticated user was not found.");
         }
 

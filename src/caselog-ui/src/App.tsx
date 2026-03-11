@@ -29,6 +29,7 @@ import {
   getAdminUsers,
   getList,
   getListEntries,
+  login,
   getListFields,
   getLists,
   getKaseLogs,
@@ -55,7 +56,7 @@ import {
   updateProfilePassword,
   uploadPageAttachment,
 } from "./api";
-import { authStorage, type ApiError, apiRequest } from "./api/client";
+import { authStorage, type ApiError } from "./api/client";
 import { AppShell } from "./components/layout";
 import {
   Badge,
@@ -407,10 +408,7 @@ const LoginPage = ({ navigate, onToast }: { navigate: (path: string) => void; on
     setLoading(true);
     setError(null);
     try {
-      const response = await apiRequest<{ token: string; user?: unknown }>("/api/auth/login", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-      });
+      const response = await login(email, password);
       authStorage.setSession(response.token, response.user ?? { email });
       onToast("Logged in");
       navigate("/dashboard");
