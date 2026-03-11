@@ -158,7 +158,7 @@ await using (var scope = app.Services.CreateAsyncScope())
     await dbContext.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
 
     var appliedMigrations = (await dbContext.Database.GetAppliedMigrationsAsync()).OrderBy(x => x).ToArray();
-    var searchIndexMetadata = await GetSearchIndexMetadataAsync(dbContext);
+    var searchIndexMetadata = await EnsureSearchIndexTableAsync(dbContext, logger);
 
     startupChecks = startupChecks with
     {
@@ -178,15 +178,7 @@ await using (var scope = app.Services.CreateAsyncScope())
             "This usually means runtime migrations were not discovered or do not match the runtime model.");
     }
 
-    if (!searchIndexMetadata.Exists)
-    {
-        throw new InvalidOperationException("Required search index table 'search_index' is missing after migrations.");
-    }
-
-    if (!string.Equals(searchIndexMetadata.Type, "virtual", StringComparison.OrdinalIgnoreCase))
-    {
-        throw new InvalidOperationException($"Search index table exists but is not an FTS virtual table. Type={searchIndexMetadata.Type ?? "unknown"}.");
-    }
+    ValidateSearchIndex(searchIndexMetadata);
 
     if (!await dbContext.Users.AnyAsync())
     {
@@ -323,6 +315,147 @@ static async Task<(bool Exists, string? Type)> GetSearchIndexMetadataAsync(Casel
 
     var value = await command.ExecuteScalarAsync();
     return value is null or DBNull ? (false, null) : (true, value.ToString());
+}
+
+static void ValidateSearchIndex((bool Exists, string? Type) searchIndexMetadata)
+{
+    if (!searchIndexMetadata.Exists)
+    {
+        throw new InvalidOperationException("Required search index table 'search_index' is missing after migrations and startup repair.");
+    }
+
+    if (!string.Equals(searchIndexMetadata.Type, "virtual", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException($"Search index table exists but is not an FTS virtual table after startup repair. Type={searchIndexMetadata.Type ?? "unknown"}.");
+    }
+}
+
+static async Task<(bool Exists, string? Type)> EnsureSearchIndexTableAsync(CaselogDbContext dbContext, MsLogger logger)
+{
+    var metadata = await GetSearchIndexMetadataAsync(dbContext);
+    if (string.Equals(metadata.Type, "virtual", StringComparison.OrdinalIgnoreCase))
+    {
+        logger.LogInformation("Search index check: search_index is healthy (type=virtual).");
+        return metadata;
+    }
+
+    if (!metadata.Exists)
+    {
+        logger.LogWarning("Search index check: search_index is missing. Creating FTS5 virtual table.");
+        await CreateSearchIndexVirtualTableAsync(dbContext);
+        var repairedMetadata = await GetSearchIndexMetadataAsync(dbContext);
+        logger.LogInformation("Search index repair result: Exists={Exists}; Type={Type}", repairedMetadata.Exists, repairedMetadata.Type);
+        return repairedMetadata;
+    }
+
+    if (string.Equals(metadata.Type, "table", StringComparison.OrdinalIgnoreCase))
+    {
+        logger.LogWarning("Search index check: search_index exists as a regular table. Starting in-place repair to FTS5 virtual table.");
+        await RepairLegacySearchIndexTableAsync(dbContext, logger);
+        var repairedMetadata = await GetSearchIndexMetadataAsync(dbContext);
+        logger.LogInformation("Search index repair result: Exists={Exists}; Type={Type}", repairedMetadata.Exists, repairedMetadata.Type);
+        return repairedMetadata;
+    }
+
+    logger.LogError("Search index check: unsupported object type for search_index. Type={Type}", metadata.Type);
+    return metadata;
+}
+
+static async Task CreateSearchIndexVirtualTableAsync(CaselogDbContext dbContext)
+{
+    await dbContext.Database.ExecuteSqlRawAsync("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+          entity_type,
+          entity_id,
+          title,
+          content,
+          tags,
+          summary
+        );
+        """);
+}
+
+static async Task RepairLegacySearchIndexTableAsync(CaselogDbContext dbContext, MsLogger logger)
+{
+    var existingColumns = await GetSearchIndexColumnsAsync(dbContext);
+    var hasMandatoryColumns = existingColumns.Contains("entity_type") && existingColumns.Contains("entity_id");
+
+    if (!hasMandatoryColumns)
+    {
+        logger.LogWarning(
+            "Legacy search_index table is incompatible (missing mandatory columns). Recreating FTS table without data migration. ExistingColumns=[{Columns}]",
+            string.Join(", ", existingColumns.OrderBy(x => x)));
+
+        await dbContext.Database.ExecuteSqlRawAsync("DROP TABLE IF EXISTS search_index;");
+        await CreateSearchIndexVirtualTableAsync(dbContext);
+        return;
+    }
+
+    var selectEntityType = existingColumns.Contains("entity_type") ? "entity_type" : "NULL";
+    var selectEntityId = existingColumns.Contains("entity_id") ? "entity_id" : "NULL";
+    var selectTitle = existingColumns.Contains("title") ? "title" : "NULL";
+    var selectContent = existingColumns.Contains("content") ? "content" : "NULL";
+    var selectTags = existingColumns.Contains("tags") ? "tags" : "NULL";
+    var selectSummary = existingColumns.Contains("summary") ? "summary" : "NULL";
+
+    await dbContext.Database.ExecuteSqlRawAsync("DROP TABLE IF EXISTS search_index_repair;");
+    await dbContext.Database.ExecuteSqlRawAsync("""
+        CREATE VIRTUAL TABLE search_index_repair USING fts5(
+          entity_type,
+          entity_id,
+          title,
+          content,
+          tags,
+          summary
+        );
+        """);
+
+    await dbContext.Database.ExecuteSqlRawAsync($"""
+        INSERT INTO search_index_repair(entity_type, entity_id, title, content, tags, summary)
+        SELECT
+            {selectEntityType},
+            {selectEntityId},
+            {selectTitle},
+            {selectContent},
+            {selectTags},
+            {selectSummary}
+        FROM search_index;
+        """);
+
+    await dbContext.Database.ExecuteSqlRawAsync("DROP TABLE search_index;");
+    await CreateSearchIndexVirtualTableAsync(dbContext);
+    await dbContext.Database.ExecuteSqlRawAsync("""
+        INSERT INTO search_index(entity_type, entity_id, title, content, tags, summary)
+        SELECT entity_type, entity_id, title, content, tags, summary
+        FROM search_index_repair;
+        """);
+    await dbContext.Database.ExecuteSqlRawAsync("DROP TABLE search_index_repair;");
+
+    logger.LogInformation("Legacy search_index table repaired to FTS5 while preserving compatible data.");
+}
+
+static async Task<HashSet<string>> GetSearchIndexColumnsAsync(CaselogDbContext dbContext)
+{
+    await using var connection = dbContext.Database.GetDbConnection();
+    if (connection.State != System.Data.ConnectionState.Open)
+    {
+        await connection.OpenAsync();
+    }
+
+    await using var command = connection.CreateCommand();
+    command.CommandText = "PRAGMA table_info('search_index');";
+
+    var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    await using var reader = await command.ExecuteReaderAsync();
+    while (await reader.ReadAsync())
+    {
+        if (!reader.IsDBNull(1))
+        {
+            columns.Add(reader.GetString(1));
+        }
+    }
+
+    return columns;
 }
 
 static async Task<HashSet<string>> GetExistingTableNamesAsync(CaselogDbContext dbContext)

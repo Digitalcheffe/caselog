@@ -107,4 +107,3 @@ public class ListEntryFieldValue
     public ListEntry ListEntry { get; set; } = null!;
     public ListTypeField ListTypeField { get; set; } = null!;
 }
-public class SearchIndexEntry { public string EntityType { get; set; } = string.Empty; public string EntityId { get; set; } = string.Empty; public string? Title { get; set; } public string? Content { get; set; } public string? Tags { get; set; } public string? Summary { get; set; } }
