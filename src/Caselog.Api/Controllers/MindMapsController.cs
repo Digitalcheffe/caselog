@@ -76,8 +76,8 @@ public sealed class MindMapsController(CaselogDbContext dbContext, TaggingServic
         {
             Id = Guid.NewGuid(),
             UserId = userId,
-            Title = request.Title.Trim(),
-            Visibility = request.Visibility,
+            Title = (request.Title ?? "Untitled").Trim(),
+            Visibility = request.Visibility ?? Visibility.Private,
             PublicSlug = request.PublicSlug,
             CreatedAt = now,
             UpdatedAt = now
@@ -121,8 +121,8 @@ public sealed class MindMapsController(CaselogDbContext dbContext, TaggingServic
             return NotFoundProblem($"Mind map '{id}' was not found.");
         }
 
-        mindMap.Title = request.Title.Trim();
-        mindMap.Visibility = request.Visibility;
+        mindMap.Title = (request.Title ?? mindMap.Title).Trim();
+        mindMap.Visibility = request.Visibility ?? mindMap.Visibility;
         mindMap.PublicSlug = request.PublicSlug;
         mindMap.UpdatedAt = DateTime.UtcNow;
 

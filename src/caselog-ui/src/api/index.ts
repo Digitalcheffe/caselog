@@ -294,12 +294,12 @@ export const getKase = async (id: string): Promise<Kase> =>
   apiRequest<Kase>(`/api/kases/${id}`);
 
 export const getKaseLogs = async (kaseId: string): Promise<Log[]> => {
-  const response = await apiRequest<{ items: ApiPage[] }>(`/api/kases/${kaseId}/logs?page=1&pageSize=200`);
+  const response = await apiRequest<{ items: ApiPage[] }>(`/api/logs?kaseId=${encodeURIComponent(kaseId)}&page=1&pageSize=200`);
   return response.items.map(toPage);
 };
 
 export const createKaseLog = async (kaseId: string, body: { title: string }): Promise<Log> =>
-  toPage(await apiRequest<ApiPage>(`/api/kases/${kaseId}/logs`, { method: "POST", body: JSON.stringify(body) }));
+  toPage(await apiRequest<ApiPage>(`/api/logs`, { method: "POST", body: JSON.stringify({ ...body, kaseId, content: "", visibility: "private" }) }));
 
 export const getLooseEnds = async (): Promise<Log[]> => {
   const response = await apiRequest<{ items: ApiPage[] }>("/api/logs?unassigned=true&page=1&pageSize=200");
@@ -352,14 +352,29 @@ export const disableTwoFactor = async (): Promise<void> => {
   });
 };
 
-export const getApiKeys = async (): Promise<Array<{ id: string; name: string; createdAt: string; lastUsedAt?: string | null }>> =>
-  apiRequest<Array<{ id: string; name: string; createdAt: string; lastUsedAt?: string | null }>>("/api/apikeys");
+export const getApiKeys = async (): Promise<Array<{ id: string; name: string; createdAt: string; lastUsedAt?: string | null }>> => {
+  const keys = await apiRequest<Array<{ id: string; label: string; createdAt: string; lastUsedAt?: string | null }>>("/api/apikeys");
+  return keys.map((key) => ({
+    id: key.id,
+    name: key.label,
+    createdAt: key.createdAt,
+    lastUsedAt: key.lastUsedAt,
+  }));
+};
 
-export const createApiKey = async (name: string): Promise<{ id: string; name: string; key: string; createdAt: string }> =>
-  apiRequest<{ id: string; name: string; key: string; createdAt: string }>("/api/apikeys", {
+export const createApiKey = async (name: string): Promise<{ id: string; name: string; key: string; createdAt: string }> => {
+  const created = await apiRequest<{ id: string; label: string; key: string; createdAt: string }>("/api/apikeys", {
     method: "POST",
     body: JSON.stringify({ name }),
   });
+
+  return {
+    id: created.id,
+    name: created.label,
+    key: created.key,
+    createdAt: created.createdAt,
+  };
+};
 
 export const revokeApiKey = async (id: string): Promise<void> => {
   await apiRequest<unknown>(`/api/apikeys/${id}`, {

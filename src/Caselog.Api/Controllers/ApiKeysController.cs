@@ -29,13 +29,21 @@ public sealed class ApiKeysController(CaselogDbContext dbContext) : BaseApiContr
     [HttpPost]
     public async Task<ActionResult<ApiEnvelope<CreateApiKeyResponse>>> CreateApiKey([FromBody] CreateApiKeyRequest request, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(request.EffectiveLabel))
+        {
+            return base.ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]> { ["label"] = ["Label is required."] })
+            {
+                Title = "One or more validation errors occurred.",
+                Status = StatusCodes.Status400BadRequest
+            });
+        }
         var now = DateTime.UtcNow;
         var rawKey = ApiKeyHasher.GenerateApiKey();
         var entity = new UserApiKey
         {
             Id = Guid.NewGuid(),
             UserId = GetUserId(),
-            Label = request.Label.Trim(),
+            Label = request.EffectiveLabel,
             CreatedAt = now,
             KeyHash = ApiKeyHasher.Hash(rawKey)
         };

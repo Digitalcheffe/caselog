@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Serilog;
 using Serilog.Events;
 using SerilogLog = Serilog.Log;
@@ -98,7 +100,10 @@ builder.Services
     .AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyAuthenticationDefaults.Scheme, _ => { });
 
 builder.Services.AddAuthorization();
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false));
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddScoped<LogSearchIndexService>();
@@ -108,6 +113,8 @@ builder.Services.AddScoped<ListEntrySearchIndexService>();
 builder.Services.AddScoped<MindMapSearchIndexService>();
 
 var app = builder.Build();
+
+var requiredTables = new[] { "Users", "UserApiKeys", "Kases", "Logs", "ListTypes", "ListFields", "ListEntries", "MindMaps", "MindMapNodes", "Notes", "Tags", "EntityTags", "search_index" };
 
 var startupChecks = new StartupChecks(
     dataPath,
@@ -141,7 +148,7 @@ await using (var scope = app.Services.CreateAsyncScope())
             "Cannot initialize schema safely. Ensure migrations are committed and published with the API assembly.");
     }
 
-    await ApplyMigrationsWithRecoveryAsync(dbContext, logger, dataPath, pendingMigrations);
+    await ApplyMigrationsWithRecoveryAsync(dbContext, logger, dataPath, pendingMigrations, requiredTables);
 
     await dbContext.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
 
@@ -150,7 +157,7 @@ await using (var scope = app.Services.CreateAsyncScope())
         DbConnectionOk = await dbContext.Database.CanConnectAsync()
     };
 
-    var missingTables = await GetMissingRequiredTablesAsync(dbContext, ["Users", "UserApiKeys"]);
+    var missingTables = await GetMissingRequiredTablesAsync(dbContext, requiredTables);
     if (missingTables.Count > 0)
     {
         throw new InvalidOperationException(
@@ -212,7 +219,8 @@ static async Task ApplyMigrationsWithRecoveryAsync(
     CaselogDbContext dbContext,
     MsLogger logger,
     string dataPath,
-    string[] pendingMigrations)
+    string[] pendingMigrations,
+    string[] requiredTables)
 {
     try
     {
@@ -227,7 +235,7 @@ static async Task ApplyMigrationsWithRecoveryAsync(
         throw;
     }
 
-    var missingTablesAfterMigrate = await GetMissingRequiredTablesAsync(dbContext, ["Users", "UserApiKeys"]);
+    var missingTablesAfterMigrate = await GetMissingRequiredTablesAsync(dbContext, requiredTables);
     if (missingTablesAfterMigrate.Count == 0)
     {
         return;
@@ -264,7 +272,7 @@ static async Task ApplyMigrationsWithRecoveryAsync(
     await using var recoveryDbContext = new CaselogDbContext(recoveryOptions);
     await recoveryDbContext.Database.MigrateAsync();
 
-    var missingTablesAfterRecovery = await GetMissingRequiredTablesAsync(recoveryDbContext, ["Users", "UserApiKeys"]);
+    var missingTablesAfterRecovery = await GetMissingRequiredTablesAsync(recoveryDbContext, requiredTables);
     if (missingTablesAfterRecovery.Count > 0)
     {
         throw new InvalidOperationException(

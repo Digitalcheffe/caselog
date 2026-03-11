@@ -9,7 +9,9 @@ public abstract class BaseApiController : ControllerBase
 {
     protected Guid GetUserId()
     {
-        var claimValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var claimValue = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("sub");
+
         return Guid.TryParse(claimValue, out var userId)
             ? userId
             : throw new InvalidOperationException("Authenticated user id claim is missing.");

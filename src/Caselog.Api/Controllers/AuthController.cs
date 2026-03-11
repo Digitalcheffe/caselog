@@ -55,6 +55,16 @@ public sealed class AuthController(
     {
         var userId = GetUserId();
         var user = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Id == userId, cancellationToken);
+
+        if (user is null)
+        {
+            var email = User.FindFirstValue(ClaimTypes.Email);
+            if (!string.IsNullOrWhiteSpace(email))
+            {
+                user = await dbContext.Users.AsNoTracking().SingleOrDefaultAsync(x => x.Email == email, cancellationToken);
+            }
+        }
+
         if (user is null)
         {
             return NotFoundProblem("Authenticated user was not found.");
