@@ -37,8 +37,22 @@ const logApiError = (params: {
 
 const unwrapEnvelope = async <T>(response: Response, method: string, url: string, requestBody?: string): Promise<T> => {
   let payload: ApiEnvelope<T> | null = null;
+  let problemDetails: {
+    title?: string;
+    detail?: string;
+    errors?: Record<string, string[]>;
+  } | null = null;
   try {
-    payload = (await response.json()) as ApiEnvelope<T>;
+    const rawPayload = (await response.json()) as ApiEnvelope<T> | {
+      title?: string;
+      detail?: string;
+      errors?: Record<string, string[]>;
+    };
+    if ("data" in rawPayload || "error" in rawPayload) {
+      payload = rawPayload as ApiEnvelope<T>;
+    } else {
+      problemDetails = rawPayload;
+    }
   } catch {
     payload = null;
   }
@@ -49,20 +63,30 @@ const unwrapEnvelope = async <T>(response: Response, method: string, url: string
   }
 
   if (!response.ok || payload?.error) {
+    const validationMessages = problemDetails?.errors
+      ? Object.entries(problemDetails.errors)
+          .flatMap(([field, messages]) => messages.map((message) => `${field}: ${message}`))
+          .join(" ")
+      : "";
+    const fallbackMessage = [problemDetails?.detail, problemDetails?.title, validationMessages]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
     logApiError({
       method,
       url,
       status: response.status,
       requestBody,
-      responseBody: payload,
+      responseBody: payload ?? problemDetails,
     });
     throw {
       status: response.status,
       message:
         typeof payload?.error === 'string'
           ? payload.error
-          : (payload?.error as { message?: string } | null)?.message ?? response.statusText,
-      details: payload,
+          : (payload?.error as { message?: string } | null)?.message ?? fallbackMessage || response.statusText,
+      details: payload ?? problemDetails,
     } satisfies ApiError;
   }
 

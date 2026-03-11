@@ -344,6 +344,19 @@ button {
   min-height: 400px;
   padding: 12px;
 }
+
+.editor table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+}
+
+.editor th,
+.editor td {
+  border: 1px solid var(--color-border);
+  padding: 8px;
+  text-align: left;
+}
 .editor:focus {
   outline: none;
 }
@@ -523,6 +536,16 @@ button {
   cursor: pointer;
   padding: 0;
   text-align: left;
+}
+
+.interactive-card {
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.interactive-card:hover {
+  background: var(--color-bg-elevated);
+  border-color: var(--color-accent);
 }
 
 .empty-state-card {
@@ -762,6 +785,15 @@ button {
   border: 1px solid var(--color-border);
   border-radius: 8px;
   overflow: hidden;
+}
+
+.mindmap-hint {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
 }
 
 .mindmap-node {

@@ -11,7 +11,9 @@ export const Textarea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement
 export const Select = ({ children, ...props }: PropsWithChildren<React.SelectHTMLAttributes<HTMLSelectElement>>) => <select {...props} className={`input ${props.className ?? ''}`.trim()}>{children}</select>;
 export const Checkbox = (props: React.InputHTMLAttributes<HTMLInputElement>) => <input type="checkbox" {...props} className={`checkbox ${props.className ?? ''}`.trim()} />;
 
-export const Card = ({ children, className }: PropsWithChildren<{ className?: string }>) => <section className={`card ${className ?? ""}`.trim()}>{children}</section>;
+export const Card = ({ children, className, ...props }: PropsWithChildren<React.HTMLAttributes<HTMLElement>>) => (
+  <section className={`card ${className ?? ""}`.trim()} {...props}>{children}</section>
+);
 export const CardGrid = ({ children }: PropsWithChildren) => <div className="card-grid">{children}</div>;
 export const PageHeader = ({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: ReactNode }) => (
   <header className="page-header"><div><h1>{title}</h1>{subtitle ? <p>{subtitle}</p> : null}</div>{actions}</header>
