@@ -55,8 +55,7 @@ if (!string.IsNullOrWhiteSpace(dataDirectory))
 
 builder.WebHost.UseUrls(listeningUrl);
 builder.Services.AddDbContext<CaselogDbContext>(options =>
-    options.UseSqlite($"Data Source={dataPath}",
-        sqliteOptions => sqliteOptions.MigrationsAssembly(typeof(CaselogDbContext).Assembly.GetName().Name)));
+    options.UseSqlite($"Data Source={dataPath}"));
 
 builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddSingleton<LoginRateLimiter>();
